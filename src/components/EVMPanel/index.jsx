@@ -1,0 +1,486 @@
+import React, { useState, useEffect } from "react";
+import { 
+  Lock, 
+  Unlock, 
+  Check, 
+  ChevronRight, 
+  ChevronLeft, 
+  ShieldCheck, 
+  Award, 
+  CheckCircle2, 
+  AlertCircle, 
+  Vote, 
+  Sparkles,
+  Radio
+} from "lucide-react";
+import confetti from "canvas-confetti";
+import { useElection } from "../../context/ElectionContext";
+import { soundManager } from "../../utils/sound";
+
+export const EVMPanel = () => {
+  const { electionConfig, positions, candidates, castBallot } = useElection();
+
+  const boothState = electionConfig.boothState || {};
+  const isUnlocked = boothState.status === "UNLOCKED";
+  const isSubmitting = boothState.status === "SUBMITTING";
+  const authorizedVoter = boothState.authorizedVoter;
+
+  // EVM Internal flow:
+  // "WELCOME" -> "VOTING" -> "REVIEW" -> "SUCCESS"
+  const [evmStep, setEvmStep] = useState("WELCOME");
+  const [currentPosIndex, setCurrentPosIndex] = useState(0);
+  const [ballotSelections, setBallotSelections] = useState({}); // { [positionId]: candidateId | 'NOTA' }
+  const [countdown, setCountdown] = useState(electionConfig.autoLockDelaySeconds || 4);
+
+  // When booth unlocks from the verification desk, reset EVM state to Welcome
+  useEffect(() => {
+    if (isUnlocked && authorizedVoter) {
+      setEvmStep("WELCOME");
+      setCurrentPosIndex(0);
+      setBallotSelections({});
+    }
+  }, [isUnlocked, authorizedVoter?.studentId]);
+
+  // Handle countdown when vote is submitted
+  useEffect(() => {
+    let timer = null;
+    if (isSubmitting || evmStep === "SUCCESS") {
+      setCountdown(electionConfig.autoLockDelaySeconds || 4);
+      timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isSubmitting, evmStep, electionConfig.autoLockDelaySeconds]);
+
+  // Candidate selection handler
+  const handleSelectCandidate = (posId, candidateId) => {
+    soundManager.playSelectBeep();
+    setBallotSelections((prev) => ({
+      ...prev,
+      [posId]: candidateId
+    }));
+  };
+
+  // Move to next position in sequence
+  const handleNextPosition = () => {
+    if (currentPosIndex < positions.length - 1) {
+      setCurrentPosIndex((prev) => prev + 1);
+    } else {
+      setEvmStep("REVIEW");
+    }
+  };
+
+  // Move back
+  const handlePrevPosition = () => {
+    if (currentPosIndex > 0) {
+      setCurrentPosIndex((prev) => prev - 1);
+    } else {
+      setEvmStep("WELCOME");
+    }
+  };
+
+  // Final Cast Ballot
+  const handleFinalSubmit = () => {
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+    } catch (e) {
+      // ignore
+    }
+
+    setEvmStep("SUCCESS");
+    castBallot(ballotSelections);
+  };
+
+  // -------------------------------------------------------------
+  // RENDER 1: LOCKED STANDBY SCREEN
+  // -------------------------------------------------------------
+  if (!isUnlocked && !isSubmitting && evmStep !== "SUCCESS") {
+    return (
+      <div className="evm-terminal-container evm-locked-screen fade-in">
+        <div className="evm-lock-beacon-card card-base">
+          <div className="evm-lock-icon-wrap">
+            <Lock size={64} className="lock-icon-pulse" />
+          </div>
+
+          <div className="evm-status-title">EVM TERMINAL IS LOCKED</div>
+          <div className="evm-booth-id">
+            TERMINAL STATION ID: <strong>{boothState.activeBoothId || "BOOTH-ALPHA-01"}</strong>
+          </div>
+
+          <div className="evm-lock-instructions">
+            <p>
+              Please present your official Student ID card at the <strong>Verification Desk</strong>.
+            </p>
+            <p className="evm-lock-subtext">
+              The Polling Officer will verify your electoral eligibility and unlock this terminal automatically.
+            </p>
+          </div>
+
+          <div className="evm-listening-indicator">
+            <Radio size={16} className="radio-pulse" />
+            <span>Listening for real-time polling officer authorization signal...</span>
+          </div>
+
+          <div className="evm-security-seal">
+            <ShieldCheck size={16} />
+            <span>Official Campus Election Commission • Zero-Paper Secure System</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // RENDER 2: SUCCESS / AUTO-LOCKDOWN SCREEN
+  // -------------------------------------------------------------
+  if (isSubmitting || evmStep === "SUCCESS") {
+    return (
+      <div className="evm-terminal-container evm-success-screen fade-in">
+        <div className="evm-success-card card-base">
+          <div className="success-icon-wrap">
+            <CheckCircle2 size={72} color="#059669" />
+          </div>
+
+          <h2 className="success-title">OFFICIAL BALLOT RECORDED SECURELY</h2>
+          <div className="success-voter-name">
+            Thank you, {authorizedVoter?.name || "Voter"}!
+          </div>
+
+          <div className="digital-vvpat-slip card-base">
+            <div className="vvpat-header">
+              <Vote size={18} />
+              <span>DIGITAL VVPAT BALLOT RECEIPT</span>
+            </div>
+            <div className="vvpat-details">
+              <div className="vvpat-row">
+                <span>Voter Roll ID:</span>
+                <span className="font-mono">{authorizedVoter?.studentId}</span>
+              </div>
+              <div className="vvpat-row">
+                <span>Positions Voted:</span>
+                <span>{positions.length} of {positions.length} Completed</span>
+              </div>
+              <div className="vvpat-row">
+                <span>Timestamp:</span>
+                <span>{new Date().toLocaleTimeString()}</span>
+              </div>
+              <div className="vvpat-row">
+                <span>Status:</span>
+                <span className="text-emerald font-bold">LOCKED & RECORDED</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Auto-lock timer */}
+          <div className="auto-lock-countdown">
+            <div className="countdown-ring">{countdown}</div>
+            <p>
+              Terminal resetting and auto-locking for the next voter in <strong>{countdown}</strong> seconds...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Current Position in Ballot Sequence
+  const currentPos = positions[currentPosIndex] || positions[0];
+  const currentPosCandidates = candidates.filter((c) => c.positionId === currentPos.id);
+  const selectedCandForPos = ballotSelections[currentPos.id];
+
+  // -------------------------------------------------------------
+  // RENDER 3: WELCOME INDUCTION SCREEN
+  // -------------------------------------------------------------
+  if (evmStep === "WELCOME") {
+    return (
+      <div className="evm-terminal-container evm-welcome-screen fade-in">
+        <div className="evm-induction-card card-base">
+          <div className="induction-top-badge">
+            <Unlock size={18} />
+            <span>Terminal Unlocked & Authorized</span>
+          </div>
+
+          <div className="induction-profile-row">
+            <img
+              src={authorizedVoter?.photoUrl}
+              alt={authorizedVoter?.name}
+              className="induction-photo"
+              onError={(e) => {
+                e.target.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80";
+              }}
+            />
+            <div className="induction-text">
+              <span className="induction-greeting">Welcome,</span>
+              <h2 className="induction-name">{authorizedVoter?.name}</h2>
+              <div className="induction-meta-tags">
+                <span className="meta-tag font-mono">{authorizedVoter?.studentId}</span>
+                <span className="meta-tag">{authorizedVoter?.course}</span>
+                <span className="meta-tag">{authorizedVoter?.semester}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="induction-instructions card-base">
+            <h4>EVM Voting Instructions</h4>
+            <ol>
+              <li>You will cast your vote for <strong>{positions.length} electoral positions</strong> in sequence.</li>
+              <li>Press the blue voting button next to your preferred candidate (or select NOTA).</li>
+              <li>Review your complete ballot summary before final confirmation.</li>
+              <li>Once confirmed, your ballot is irreversibly encrypted and recorded.</li>
+            </ol>
+          </div>
+
+          <button
+            onClick={() => setEvmStep("VOTING")}
+            className="btn-primary btn-large btn-begin-ballot"
+          >
+            <span>Proceed to Step 1: {positions[0]?.title}</span>
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // RENDER 4: BALLOT REVIEW SCREEN
+  // -------------------------------------------------------------
+  if (evmStep === "REVIEW") {
+    return (
+      <div className="evm-terminal-container evm-review-screen fade-in">
+        <div className="evm-ballot-card card-base">
+          <div className="ballot-header">
+            <div>
+              <span className="badge badge-blue">Final Step</span>
+              <h2 className="ballot-title">Review Your Official Ballot</h2>
+              <p className="ballot-subtitle">
+                Please verify your selections for each post before permanent submission.
+              </p>
+            </div>
+          </div>
+
+          <div className="review-list">
+            {positions.map((pos) => {
+              const choiceId = ballotSelections[pos.id];
+              const cand = candidates.find((c) => c.id === choiceId);
+              const isNota = choiceId === "NOTA";
+
+              return (
+                <div key={pos.id} className="review-row-item card-base">
+                  <div className="review-pos-col">
+                    <span className="review-step-label">Step #{pos.sequence}</span>
+                    <h4 className="review-pos-title">{pos.title}</h4>
+                  </div>
+
+                  <div className="review-choice-col">
+                    {cand ? (
+                      <div className="review-selected-cand">
+                        <span className="review-cand-symbol">{cand.symbolIcon}</span>
+                        <div>
+                          <div className="review-cand-name">{cand.name}</div>
+                          <div className="review-cand-dept">{cand.department} • {cand.symbolName}</div>
+                        </div>
+                      </div>
+                    ) : isNota ? (
+                      <div className="review-selected-cand text-muted">
+                        <span className="review-cand-symbol">🚫</span>
+                        <div>
+                          <div className="review-cand-name">NOTA (None of the Above)</div>
+                          <div className="review-cand-dept">Did not vote for any candidate</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="review-unselected-warning">
+                        <AlertCircle size={16} />
+                        <span>No selection made</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="review-actions-bar">
+            <button
+              onClick={() => {
+                setCurrentPosIndex(0);
+                setEvmStep("VOTING");
+              }}
+              className="btn-secondary"
+            >
+              <ChevronLeft size={16} /> Modify Selections
+            </button>
+
+            <button
+              onClick={handleFinalSubmit}
+              className="btn-success btn-large btn-cast-official"
+            >
+              <Check size={22} />
+              <span>CONFIRM & CAST OFFICIAL BALLOT</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // RENDER 5: SEQUENTIAL POSITION BALLOT (VOTING STEP)
+  // -------------------------------------------------------------
+  return (
+    <div className="evm-terminal-container evm-ballot-screen fade-in">
+      <div className="evm-ballot-card card-base">
+        {/* Stepper Progress Bar */}
+        <div className="ballot-stepper-header">
+          <div className="stepper-meta">
+            <span className="badge badge-blue">
+              Position {currentPosIndex + 1} of {positions.length}
+            </span>
+            <span className="voter-badge-pill">
+              Voter: <strong>{authorizedVoter?.name}</strong> ({authorizedVoter?.studentId})
+            </span>
+          </div>
+
+          <div className="progress-track">
+            <div 
+              className="progress-fill" 
+              style={{ width: `${((currentPosIndex + 1) / positions.length) * 100}%` }}
+            />
+          </div>
+
+          <div className="position-title-box">
+            <h2 className="current-pos-title">{currentPos.title}</h2>
+            <p className="current-pos-desc">
+              {currentPos.description || "Select one candidate or NOTA to represent this office"}
+            </p>
+          </div>
+        </div>
+
+        {/* Candidate EVM Tiles */}
+        <div className="evm-candidates-grid">
+          {currentPosCandidates.map((cand) => {
+            const isSelected = selectedCandForPos === cand.id;
+
+            return (
+              <div
+                key={cand.id}
+                onClick={() => handleSelectCandidate(currentPos.id, cand.id)}
+                className={`evm-candidate-tile card-base ${isSelected ? "cand-tile-selected" : ""}`}
+              >
+                {/* Photo & Symbol */}
+                <div className="tile-profile-section">
+                  <img
+                    src={cand.avatarUrl}
+                    alt={cand.name}
+                    className="tile-avatar"
+                    onError={(e) => {
+                      e.target.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80";
+                    }}
+                  />
+                  <div className="tile-symbol-box" title={`Symbol: ${cand.symbolName}`}>
+                    <span className="tile-symbol-icon">{cand.symbolIcon}</span>
+                    <span className="tile-symbol-name">{cand.symbolName}</span>
+                  </div>
+                </div>
+
+                {/* Candidate Info */}
+                <div className="tile-info-section">
+                  <h3 className="tile-cand-name">{cand.name}</h3>
+                  <div className="tile-cand-sub">
+                    <span>{cand.rollNo}</span>
+                    <span className="dot-sep">•</span>
+                    <span>{cand.department}</span>
+                  </div>
+                  {cand.manifesto && (
+                    <p className="tile-cand-manifesto">"{cand.manifesto}"</p>
+                  )}
+                </div>
+
+                {/* Tactile EVM Blue Button with LED indicator */}
+                <div className="tile-evm-button-section">
+                  <div className={`evm-led ${isSelected ? "led-active" : ""}`} />
+                  <button
+                    type="button"
+                    className={`evm-vote-press-btn ${isSelected ? "btn-pressed" : ""}`}
+                  >
+                    {isSelected ? <Check size={20} /> : <span className="press-label">VOTE</span>}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* NOTA Option */}
+          {currentPos.allowNota !== false && (
+            <div
+              onClick={() => handleSelectCandidate(currentPos.id, "NOTA")}
+              className={`evm-candidate-tile evm-nota-tile card-base ${
+                selectedCandForPos === "NOTA" ? "cand-tile-selected" : ""
+              }`}
+            >
+              <div className="tile-profile-section">
+                <div className="nota-icon-box">🚫</div>
+                <div className="tile-symbol-box">
+                  <span className="tile-symbol-name">NOTA</span>
+                </div>
+              </div>
+
+              <div className="tile-info-section">
+                <h3 className="tile-cand-name">None of the Above (NOTA)</h3>
+                <p className="tile-cand-manifesto text-muted">
+                  I choose not to vote for any of the nominated candidates for this post.
+                </p>
+              </div>
+
+              <div className="tile-evm-button-section">
+                <div className={`evm-led ${selectedCandForPos === "NOTA" ? "led-active" : ""}`} />
+                <button
+                  type="button"
+                  className={`evm-vote-press-btn ${selectedCandForPos === "NOTA" ? "btn-pressed" : ""}`}
+                >
+                  {selectedCandForPos === "NOTA" ? <Check size={20} /> : <span className="press-label">NOTA</span>}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Navigation Buttons */}
+        <div className="ballot-nav-bar">
+          <button
+            onClick={handlePrevPosition}
+            className="btn-secondary btn-large"
+          >
+            <ChevronLeft size={18} />
+            <span>{currentPosIndex === 0 ? "Back to Welcome" : "Previous Post"}</span>
+          </button>
+
+          <button
+            onClick={handleNextPosition}
+            disabled={!selectedCandForPos}
+            className="btn-primary btn-large"
+          >
+            <span>
+              {currentPosIndex === positions.length - 1 ? "Review Full Ballot" : "Next Position"}
+            </span>
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
