@@ -210,10 +210,30 @@ export const ElectionProvider = ({ children }) => {
             if (snapshot.exists()) {
               const data = snapshot.data();
               if (data.electionConfig) {
+                let incomingConfig = data.electionConfig;
+
+                // Watchdog Check: If incoming state says SUBMITTING but more than 8 seconds have passed since submission
+                if (incomingConfig.boothState?.status === "SUBMITTING") {
+                  const subTime = new Date(incomingConfig.boothState.submittingAt || incomingConfig.boothState.authorizedAt || 0).getTime();
+                  const ageMs = Date.now() - subTime;
+                  if (subTime > 0 && ageMs > 8000) {
+                    incomingConfig = {
+                      ...incomingConfig,
+                      boothState: {
+                        status: "LOCKED",
+                        authorizedVoter: null,
+                        authorizedAt: null,
+                        activeBoothId: incomingConfig.boothState?.activeBoothId || "BOOTH-ALPHA-01"
+                      }
+                    };
+                    setDoc(doc(db, "elections", "config"), { electionConfig: incomingConfig, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
+                  }
+                }
+
                 isInternalUpdateRef.current = true;
                 setElectionConfig((prev) => ({
-                  ...data.electionConfig,
-                  stationCredentials: data.electionConfig.stationCredentials || prev?.stationCredentials || initialStationCredentials
+                  ...incomingConfig,
+                  stationCredentials: incomingConfig.stationCredentials || prev?.stationCredentials || initialStationCredentials
                 }));
                 setTimeout(() => { isInternalUpdateRef.current = false; }, 50);
               }
@@ -351,6 +371,46 @@ export const ElectionProvider = ({ children }) => {
       unsubs.forEach((unsub) => unsub && unsub());
     };
   }, []);
+
+  // Active Watchdog: Automatically auto-locks booth if stuck in SUBMITTING state
+  useEffect(() => {
+    let watchdogTimer = null;
+    if (electionConfig?.boothState?.status === "SUBMITTING") {
+      const delayMs = ((electionConfig.autoLockDelaySeconds || 4) + 1.5) * 1000;
+      watchdogTimer = setTimeout(() => {
+        setElectionConfig((prev) => {
+          if (prev?.boothState?.status === "SUBMITTING") {
+            const lockedConfig = {
+              ...prev,
+              boothState: {
+                status: "LOCKED",
+                authorizedVoter: null,
+                authorizedAt: null,
+                activeBoothId: prev?.boothState?.activeBoothId || "BOOTH-ALPHA-01"
+              }
+            };
+            persistDirectToCloud({ electionConfig: lockedConfig });
+            if (broadcastChannelRef.current) {
+              broadcastChannelRef.current.postMessage({
+                type: "STATE_SYNC",
+                payload: { electionConfig: lockedConfig }
+              });
+            }
+            appendLog(
+              "EVM_AUTO_LOCKED",
+              "System Watchdog",
+              "EVM terminal automatically transitioned from SUBMITTING to LOCKED standby."
+            );
+            return lockedConfig;
+          }
+          return prev;
+        });
+      }, delayMs);
+    }
+    return () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+    };
+  }, [electionConfig?.boothState?.status, electionConfig?.autoLockDelaySeconds]);
 
   // Save to LocalStorage, BroadcastChannel, and Firestore Modular Documents
   useEffect(() => {
@@ -634,7 +694,8 @@ export const ElectionProvider = ({ children }) => {
       ...electionConfig,
       boothState: {
         ...electionConfig.boothState,
-        status: "SUBMITTING"
+        status: "SUBMITTING",
+        submittingAt: now
       }
     };
     setElectionConfig(submittingBoothState);
@@ -677,19 +738,25 @@ export const ElectionProvider = ({ children }) => {
     );
 
     setTimeout(() => {
-      const lockedConfig = {
-        ...electionConfig,
-        boothState: {
-          status: "LOCKED",
-          authorizedVoter: null,
-          authorizedAt: null,
-          activeBoothId: "BOOTH-ALPHA-01"
+      setElectionConfig((prev) => {
+        const lockedConfig = {
+          ...prev,
+          boothState: {
+            status: "LOCKED",
+            authorizedVoter: null,
+            authorizedAt: null,
+            activeBoothId: prev?.boothState?.activeBoothId || "BOOTH-ALPHA-01"
+          }
+        };
+        persistDirectToCloud({ electionConfig: lockedConfig });
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({
+            type: "STATE_SYNC",
+            payload: { electionConfig: lockedConfig }
+          });
         }
-      };
-      setElectionConfig(lockedConfig);
-      if (db) {
-        setDoc(doc(db, "elections", "config"), { electionConfig: lockedConfig, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
-      }
+        return lockedConfig;
+      });
     }, (electionConfig.autoLockDelaySeconds || 4) * 1000);
 
     return { success: true };

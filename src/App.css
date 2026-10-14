@@ -2670,6 +2670,23 @@
   color: var(--primary-blue);
 }
 
+.beacon-reset-btn {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 4px;
+  background: rgba(220, 38, 38, 0.15);
+  color: #dc2626;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.beacon-reset-btn:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
 /* =========================================================
    VOTE AUDIT TAB & TRANSPARENCY STYLES
    ========================================================= */

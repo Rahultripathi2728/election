@@ -280,15 +280,15 @@ export const VerificationPanel = () => {
             </span>
           </div>
 
-          {/* Quick Re-Lock Button */}
-          {isBoothUnlocked && (
+          {/* Quick Re-Lock / Force Reset Button */}
+          {(isBoothUnlocked || isBoothSubmitting) && (
             <button
               onClick={handleRelockBooth}
               className="btn-secondary btn-sm"
               style={{ padding: "3px 8px", fontSize: "0.75rem", borderColor: "var(--danger-border)", color: "var(--danger)" }}
-              title="Cancel current authorization and re-lock EVM"
+              title="Cancel current authorization or stuck ballot recording and reset EVM to Standby"
             >
-              <Lock size={12} /> Re-Lock EVM
+              <Lock size={12} /> {isBoothSubmitting ? "Force Reset EVM" : "Re-Lock EVM"}
             </button>
           )}
         </div>

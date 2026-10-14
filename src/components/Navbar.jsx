@@ -18,7 +18,7 @@ export const Navbar = ({
   onLogout, 
   onOpenFirebaseModal 
 }) => {
-  const { electionConfig, firebaseStatus, voters, ballots } = useElection();
+  const { electionConfig, firebaseStatus, voters, ballots, cancelBoothAuthorization } = useElection();
 
   const totalVoters = voters.length;
   const votedCount = voters.filter((v) => v.hasVoted).length;
@@ -106,7 +106,20 @@ export const Navbar = ({
               <span className="beacon-dot"></span>
               <span className="beacon-text">
                 {isBoothSubmitting ? (
-                  <>⏳ EVM Recording Ballot...</>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <span>⏳ EVM Recording Ballot...</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cancelBoothAuthorization();
+                      }}
+                      className="beacon-reset-btn"
+                      title="EVM stuck in recording? Click to force-lock terminal to Standby"
+                    >
+                      Reset
+                    </button>
+                  </span>
                 ) : isBoothUnlocked ? (
                   <>
                     <Unlock size={14} /> EVM Unlocked: {boothState.authorizedVoter?.name?.split(" ")[0]}

@@ -20,7 +20,7 @@ import { DEFAULT_AVATAR } from "../../utils/constants";
 import { candidatePhotos } from "../../data/candidatePhotos";
 
 export const EVMPanel = () => {
-  const { electionConfig, positions, candidates, castBallot } = useElection();
+  const { electionConfig, positions, candidates, castBallot, cancelBoothAuthorization } = useElection();
 
   const boothState = electionConfig.boothState || {};
   const isUnlocked = boothState.status === "UNLOCKED";
@@ -98,6 +98,9 @@ export const EVMPanel = () => {
             setEvmStep("WELCOME");
             setBallotSelections({});
             setCurrentPosIndex(0);
+            if (isSubmitting) {
+              cancelBoothAuthorization();
+            }
             return 0;
           }
           return prev - 1;
