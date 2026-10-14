@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { 
   initialElectionConfig, 
+  initialStationCredentials,
   initialPositions, 
   initialCandidates, 
   initialVoters, 
@@ -43,7 +44,13 @@ const ElectionContext = createContext(null);
 
 export const ElectionProvider = ({ children }) => {
   // Master Election State
-  const [electionConfig, setElectionConfig] = useState(() => getInitialState("electionConfig", initialElectionConfig));
+  const [electionConfig, setElectionConfig] = useState(() => {
+    const raw = getInitialState("electionConfig", initialElectionConfig);
+    if (raw && !raw.stationCredentials) {
+      return { ...raw, stationCredentials: initialStationCredentials };
+    }
+    return raw || initialElectionConfig;
+  });
   const [positions, setPositions] = useState(() => getInitialState("positions", initialPositions));
   const [deletedCandidateIds, setDeletedCandidateIds] = useState(() => getInitialState("deletedCandidateIds", []));
   const [candidates, setCandidates] = useState(() => {
@@ -204,7 +211,10 @@ export const ElectionProvider = ({ children }) => {
               const data = snapshot.data();
               if (data.electionConfig) {
                 isInternalUpdateRef.current = true;
-                setElectionConfig(data.electionConfig);
+                setElectionConfig((prev) => ({
+                  ...data.electionConfig,
+                  stationCredentials: data.electionConfig.stationCredentials || prev?.stationCredentials || initialStationCredentials
+                }));
                 setTimeout(() => { isInternalUpdateRef.current = false; }, 50);
               }
             }
@@ -373,6 +383,7 @@ export const ElectionProvider = ({ children }) => {
       try {
         const now = new Date().toISOString();
         Promise.all([
+          setDoc(doc(db, "elections", "config"), { electionConfig, updatedAt: now }, { merge: true }),
           setDoc(doc(db, "elections", "positions"), { positions, updatedAt: now }, { merge: true }),
           setDoc(doc(db, "elections", "voters"), { voters, updatedAt: now }, { merge: true }),
           setDoc(doc(db, "elections", "auditLogs"), { auditLogs, updatedAt: now }, { merge: true })
@@ -983,8 +994,32 @@ export const ElectionProvider = ({ children }) => {
     appendLog("ELECTION_STATUS_CHANGE", "Admin", `Election status changed to: ${status}`);
   };
 
+  // 10. Update Station Security Passwords (Production Hardening)
+  const updateStationCredentials = (newCredentials) => {
+    const updated = {
+      ...electionConfig,
+      stationCredentials: newCredentials
+    };
+    setElectionConfig(updated);
+    persistDirectToCloud({ electionConfig: updated });
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({
+        type: "STATE_SYNC",
+        payload: { electionConfig: updated }
+      });
+    }
+    appendLog(
+      "SECURITY_CREDENTIALS_UPDATED",
+      "Chief Electoral Officer",
+      "Station security access passcodes were updated and synchronized across all terminals."
+    );
+    return { success: true, message: "Station passwords updated successfully!" };
+  };
+
   const value = {
     electionConfig,
+    initialStationCredentials,
+    updateStationCredentials,
     positions: [...positions].sort((a, b) => a.sequence - b.sequence),
     candidates,
     voters,

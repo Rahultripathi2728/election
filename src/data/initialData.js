@@ -2,6 +2,33 @@
 import { DEFAULT_AVATAR } from "../utils/constants.js";
 import { candidatePhotos } from "./candidatePhotos.js";
 
+export const initialStationCredentials = {
+  admin: {
+    role: "admin",
+    username: "admin",
+    passcode: "admin123",
+    label: "Chief Electoral Officer (Admin)"
+  },
+  verify: {
+    role: "verify",
+    username: "officer",
+    passcode: "verify123",
+    label: "Verification Officer Desk"
+  },
+  evm: {
+    role: "evm",
+    username: "booth",
+    passcode: "booth123",
+    label: "EVM Voting Terminal"
+  },
+  live: {
+    role: "live",
+    username: "live",
+    passcode: "live123",
+    label: "Public Results Display"
+  }
+};
+
 export const initialElectionConfig = {
   title: "University Student Council Elections 2026",
   institution: "Graphic Era Hill University",
@@ -14,7 +41,8 @@ export const initialElectionConfig = {
     authorizedVoter: null, // { studentId, name, course, semester, fatherName, photoUrl, year }
     authorizedAt: null,
     activeBoothId: "BOOTH-ALPHA-01"
-  }
+  },
+  stationCredentials: initialStationCredentials
 };
 
 export const initialPositions = [

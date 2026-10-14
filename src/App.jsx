@@ -9,22 +9,31 @@ import { LiveResultsPanel } from "./components/LiveResultsPanel";
 import { FirebaseModal } from "./components/FirebaseModal";
 import "./App.css";
 
-const SESSION_STORAGE_KEY = "paperless_election_user_session_v3";
+const SESSION_STORAGE_KEY = "paperless_election_session_secure_v4";
 
 const MainApp = () => {
   // Session State: { role: "admin" | "verify" | "evm" | "live", username: string, label: string }
+  // Production Hardening: URL parameter bypass is completely stripped. Real password entry required.
   const [userSession, setUserSession] = useState(() => {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const requestedRole = params.get("role") || params.get("view") || params.get("station");
-      if (["admin", "verify", "evm", "live"].includes(requestedRole)) {
-        return {
-          role: requestedRole,
-          username: requestedRole,
-          label: requestedRole.toUpperCase()
-        };
+      // 1. Production Security: Strip out any unauthorized query param attempt (?role=...)
+      const url = new URL(window.location.href);
+      let cleaned = false;
+      ["role", "view", "station"].forEach((p) => {
+        if (url.searchParams.has(p)) {
+          url.searchParams.delete(p);
+          cleaned = true;
+        }
+      });
+      if (cleaned) {
+        window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
       }
-      const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+
+      // 2. Invalidate legacy unauthenticated sessions
+      localStorage.removeItem("paperless_election_user_session_v3");
+
+      // 3. Strictly restore only from active sessionStorage (closing browser/tab requires fresh login)
+      const saved = sessionStorage.getItem(SESSION_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && ["admin", "verify", "evm", "live"].includes(parsed.role)) {
@@ -98,33 +107,24 @@ const MainApp = () => {
     };
   }, []);
 
-  // Sync role to URL for multi-window simulation
-  useEffect(() => {
-    try {
-      const url = new URL(window.location.href);
-      if (userSession?.role) {
-        url.searchParams.set("role", userSession.role);
-        window.history.replaceState({}, "", url.toString());
-      }
-    } catch (e) {}
-  }, [userSession]);
-
   const handleLoginSuccess = (sessionData) => {
     setUserSession(sessionData);
     try {
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
     } catch (e) {}
   };
 
   const handleLogout = () => {
     setUserSession(null);
     try {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
       localStorage.removeItem(SESSION_STORAGE_KEY);
+      localStorage.removeItem("paperless_election_user_session_v3");
       const url = new URL(window.location.href);
       url.searchParams.delete("role");
       url.searchParams.delete("view");
       url.searchParams.delete("station");
-      window.history.replaceState({}, "", url.toString());
+      window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
     } catch (e) {}
   };
 

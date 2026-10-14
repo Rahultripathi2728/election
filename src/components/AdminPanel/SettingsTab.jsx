@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Settings, 
   RotateCcw, 
@@ -11,10 +11,19 @@ import {
   Database,
   RefreshCw,
   Server,
-  ShieldCheck
+  ShieldCheck,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Vote,
+  BarChart3,
+  Sliders,
+  User
 } from "lucide-react";
 import { useElection } from "../../context/ElectionContext";
 import { Modal } from "../common/Modal";
+import { initialStationCredentials } from "../../data/initialData";
 
 export const SettingsTab = ({ onOpenFirebaseModal }) => {
   const { 
@@ -26,7 +35,8 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
     forcePushToFirestore,
     firebaseStatus,
     voters,
-    ballots
+    ballots,
+    updateStationCredentials
   } = useElection();
 
   const [title, setTitle] = useState(electionConfig.title || "");
@@ -38,6 +48,121 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
   const [showReseedConfirm, setShowReseedConfirm] = useState(false);
   const [reseedCheckbox, setReseedCheckbox] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState(null);
+
+  // Station Passwords Management State
+  const activeCreds = electionConfig?.stationCredentials || initialStationCredentials;
+  const [stationCreds, setStationCreds] = useState({
+    admin: {
+      username: activeCreds.admin?.username || "admin",
+      passcode: activeCreds.admin?.passcode || "admin123"
+    },
+    verify: {
+      username: activeCreds.verify?.username || "officer",
+      passcode: activeCreds.verify?.passcode || "verify123"
+    },
+    evm: {
+      username: activeCreds.evm?.username || "booth",
+      passcode: activeCreds.evm?.passcode || "booth123"
+    },
+    live: {
+      username: activeCreds.live?.username || "live",
+      passcode: activeCreds.live?.passcode || "live123"
+    }
+  });
+
+  const [showStationPasswords, setShowStationPasswords] = useState({
+    admin: false,
+    verify: false,
+    evm: false,
+    live: false
+  });
+
+  const [passwordFeedback, setPasswordFeedback] = useState(null);
+
+  useEffect(() => {
+    if (electionConfig?.stationCredentials) {
+      setStationCreds({
+        admin: {
+          username: electionConfig.stationCredentials.admin?.username || "admin",
+          passcode: electionConfig.stationCredentials.admin?.passcode || "admin123"
+        },
+        verify: {
+          username: electionConfig.stationCredentials.verify?.username || "officer",
+          passcode: electionConfig.stationCredentials.verify?.passcode || "verify123"
+        },
+        evm: {
+          username: electionConfig.stationCredentials.evm?.username || "booth",
+          passcode: electionConfig.stationCredentials.evm?.passcode || "booth123"
+        },
+        live: {
+          username: electionConfig.stationCredentials.live?.username || "live",
+          passcode: electionConfig.stationCredentials.live?.passcode || "live123"
+        }
+      });
+    }
+  }, [electionConfig?.stationCredentials]);
+
+  const handleSavePasswords = (e) => {
+    e.preventDefault();
+    if (
+      !stationCreds.admin.username || !stationCreds.admin.passcode ||
+      !stationCreds.verify.username || !stationCreds.verify.passcode ||
+      !stationCreds.evm.username || !stationCreds.evm.passcode ||
+      !stationCreds.live.username || !stationCreds.live.passcode
+    ) {
+      setPasswordFeedback({ type: "error", text: "Station IDs and Security Passwords cannot be empty." });
+      return;
+    }
+
+    const payload = {
+      admin: {
+        role: "admin",
+        username: stationCreds.admin.username.trim(),
+        passcode: stationCreds.admin.passcode.trim(),
+        label: "Chief Electoral Officer (Admin)"
+      },
+      verify: {
+        role: "verify",
+        username: stationCreds.verify.username.trim(),
+        passcode: stationCreds.verify.passcode.trim(),
+        label: "Verification Officer Desk"
+      },
+      evm: {
+        role: "evm",
+        username: stationCreds.evm.username.trim(),
+        passcode: stationCreds.evm.passcode.trim(),
+        label: "EVM Voting Terminal"
+      },
+      live: {
+        role: "live",
+        username: stationCreds.live.username.trim(),
+        passcode: stationCreds.live.passcode.trim(),
+        label: "Public Results Display"
+      }
+    };
+
+    updateStationCredentials(payload);
+    setPasswordFeedback({
+      type: "success",
+      text: "Station security credentials successfully saved and synchronized across all terminals via Cloud Firestore!"
+    });
+    setTimeout(() => setPasswordFeedback(null), 4000);
+  };
+
+  const handleResetDefaultPasswords = () => {
+    updateStationCredentials(initialStationCredentials);
+    setStationCreds({
+      admin: { username: initialStationCredentials.admin.username, passcode: initialStationCredentials.admin.passcode },
+      verify: { username: initialStationCredentials.verify.username, passcode: initialStationCredentials.verify.passcode },
+      evm: { username: initialStationCredentials.evm.username, passcode: initialStationCredentials.evm.passcode },
+      live: { username: initialStationCredentials.live.username, passcode: initialStationCredentials.live.passcode }
+    });
+    setPasswordFeedback({
+      type: "success",
+      text: "Factory default station credentials restored (admin / admin123, officer / verify123, booth / booth123, live / live123)!"
+    });
+    setTimeout(() => setPasswordFeedback(null), 4000);
+  };
 
   const handleSaveGeneral = (e) => {
     e.preventDefault();
@@ -203,6 +328,273 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
             <button type="submit" className="btn-primary">
               <Save size={16} /> Save Changes
             </button>
+          </form>
+        </div>
+
+        {/* Station Security & Passwords Management Card */}
+        <div className="settings-card card-base settings-card-wide">
+          <div className="settings-card-header">
+            <div className="flex-row items-center gap-2">
+              <ShieldCheck size={22} color="#2563eb" />
+              <h3>Station Security & Access Passwords (Production Control)</h3>
+            </div>
+            <span className="badge badge-blue">Cloud Synchronized</span>
+          </div>
+
+          <p className="settings-card-desc">
+            Directly configure custom Station IDs and security passwords for each election terminal. Changes save and synchronize in real time to Google Cloud Firestore across all desks.
+          </p>
+
+          {passwordFeedback && (
+            <div className={`alert-box mb-3 ${passwordFeedback.type === "success" ? "alert-success" : "alert-error"}`}>
+              {passwordFeedback.type === "success" ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+              <span>{passwordFeedback.text}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSavePasswords}>
+            <div className="station-security-grid">
+              {/* 1. Admin */}
+              <div className="station-security-box">
+                <div className="station-security-head">
+                  <div className="ss-icon" style={{ background: "rgba(37, 99, 235, 0.12)", color: "#2563eb" }}>
+                    <Sliders size={18} />
+                  </div>
+                  <div>
+                    <div className="ss-title">Chief Electoral Officer</div>
+                    <div className="ss-badge">Admin Command Station</div>
+                  </div>
+                </div>
+
+                <div className="form-group mb-2">
+                  <label className="text-xs font-semibold text-muted">Station ID / Username</label>
+                  <input
+                    type="text"
+                    required
+                    value={stationCreds.admin.username}
+                    onChange={(e) => setStationCreds({
+                      ...stationCreds,
+                      admin: { ...stationCreds.admin, username: e.target.value }
+                    })}
+                    className="form-input form-input-sm"
+                    placeholder="e.g. admin"
+                  />
+                </div>
+
+                <div className="form-group mb-1">
+                  <label className="text-xs font-semibold text-muted">Security Password</label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showStationPasswords.admin ? "text" : "password"}
+                      required
+                      value={stationCreds.admin.passcode}
+                      onChange={(e) => setStationCreds({
+                        ...stationCreds,
+                        admin: { ...stationCreds.admin, passcode: e.target.value }
+                      })}
+                      className="form-input form-input-sm"
+                      placeholder="Password..."
+                      style={{ paddingRight: "36px" }}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowStationPasswords({
+                        ...showStationPasswords,
+                        admin: !showStationPasswords.admin
+                      })}
+                      title={showStationPasswords.admin ? "Hide password" : "Show password"}
+                    >
+                      {showStationPasswords.admin ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Verification Desk */}
+              <div className="station-security-box">
+                <div className="station-security-head">
+                  <div className="ss-icon" style={{ background: "rgba(5, 150, 105, 0.12)", color: "#059669" }}>
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div>
+                    <div className="ss-title">Verification Officer Desk</div>
+                    <div className="ss-badge">Voter Check-In Station</div>
+                  </div>
+                </div>
+
+                <div className="form-group mb-2">
+                  <label className="text-xs font-semibold text-muted">Station ID / Username</label>
+                  <input
+                    type="text"
+                    required
+                    value={stationCreds.verify.username}
+                    onChange={(e) => setStationCreds({
+                      ...stationCreds,
+                      verify: { ...stationCreds.verify, username: e.target.value }
+                    })}
+                    className="form-input form-input-sm"
+                    placeholder="e.g. officer"
+                  />
+                </div>
+
+                <div className="form-group mb-1">
+                  <label className="text-xs font-semibold text-muted">Security Password</label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showStationPasswords.verify ? "text" : "password"}
+                      required
+                      value={stationCreds.verify.passcode}
+                      onChange={(e) => setStationCreds({
+                        ...stationCreds,
+                        verify: { ...stationCreds.verify, passcode: e.target.value }
+                      })}
+                      className="form-input form-input-sm"
+                      placeholder="Password..."
+                      style={{ paddingRight: "36px" }}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowStationPasswords({
+                        ...showStationPasswords,
+                        verify: !showStationPasswords.verify
+                      })}
+                      title={showStationPasswords.verify ? "Hide password" : "Show password"}
+                    >
+                      {showStationPasswords.verify ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. EVM Terminal */}
+              <div className="station-security-box">
+                <div className="station-security-head">
+                  <div className="ss-icon" style={{ background: "rgba(217, 119, 6, 0.12)", color: "#d97706" }}>
+                    <Vote size={18} />
+                  </div>
+                  <div>
+                    <div className="ss-title">EVM Voting Terminal</div>
+                    <div className="ss-badge">Secret Ballot Booth</div>
+                  </div>
+                </div>
+
+                <div className="form-group mb-2">
+                  <label className="text-xs font-semibold text-muted">Station ID / Username</label>
+                  <input
+                    type="text"
+                    required
+                    value={stationCreds.evm.username}
+                    onChange={(e) => setStationCreds({
+                      ...stationCreds,
+                      evm: { ...stationCreds.evm, username: e.target.value }
+                    })}
+                    className="form-input form-input-sm"
+                    placeholder="e.g. booth"
+                  />
+                </div>
+
+                <div className="form-group mb-1">
+                  <label className="text-xs font-semibold text-muted">Security Password</label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showStationPasswords.evm ? "text" : "password"}
+                      required
+                      value={stationCreds.evm.passcode}
+                      onChange={(e) => setStationCreds({
+                        ...stationCreds,
+                        evm: { ...stationCreds.evm, passcode: e.target.value }
+                      })}
+                      className="form-input form-input-sm"
+                      placeholder="Password..."
+                      style={{ paddingRight: "36px" }}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowStationPasswords({
+                        ...showStationPasswords,
+                        evm: !showStationPasswords.evm
+                      })}
+                      title={showStationPasswords.evm ? "Hide password" : "Show password"}
+                    >
+                      {showStationPasswords.evm ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Public Screen */}
+              <div className="station-security-box">
+                <div className="station-security-head">
+                  <div className="ss-icon" style={{ background: "rgba(124, 58, 237, 0.12)", color: "#7c3aed" }}>
+                    <BarChart3 size={18} />
+                  </div>
+                  <div>
+                    <div className="ss-title">Public Results Display</div>
+                    <div className="ss-badge">Live Tally Projector</div>
+                  </div>
+                </div>
+
+                <div className="form-group mb-2">
+                  <label className="text-xs font-semibold text-muted">Station ID / Username</label>
+                  <input
+                    type="text"
+                    required
+                    value={stationCreds.live.username}
+                    onChange={(e) => setStationCreds({
+                      ...stationCreds,
+                      live: { ...stationCreds.live, username: e.target.value }
+                    })}
+                    className="form-input form-input-sm"
+                    placeholder="e.g. live"
+                  />
+                </div>
+
+                <div className="form-group mb-1">
+                  <label className="text-xs font-semibold text-muted">Security Password</label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showStationPasswords.live ? "text" : "password"}
+                      required
+                      value={stationCreds.live.passcode}
+                      onChange={(e) => setStationCreds({
+                        ...stationCreds,
+                        live: { ...stationCreds.live, passcode: e.target.value }
+                      })}
+                      className="form-input form-input-sm"
+                      placeholder="Password..."
+                      style={{ paddingRight: "36px" }}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowStationPasswords({
+                        ...showStationPasswords,
+                        live: !showStationPasswords.live
+                      })}
+                      title={showStationPasswords.live ? "Hide password" : "Show password"}
+                    >
+                      {showStationPasswords.live ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-row items-center justify-between gap-3 mt-4" style={{ flexWrap: "wrap", paddingTop: "14px", borderTop: "1px solid var(--border-light)" }}>
+              <button type="submit" className="btn-primary">
+                <Save size={16} /> Save & Synchronize Passwords
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDefaultPasswords}
+                className="btn-secondary text-sm"
+              >
+                <RotateCcw size={14} /> Restore Factory Passwords
+              </button>
+            </div>
           </form>
         </div>
 

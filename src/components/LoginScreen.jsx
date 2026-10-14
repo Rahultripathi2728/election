@@ -4,62 +4,26 @@ import {
   KeyRound, 
   User, 
   ShieldCheck, 
-  Sliders, 
   Vote, 
   BarChart3, 
   Building, 
   AlertCircle, 
-  CheckCircle2,
   ArrowRight,
-  ExternalLink
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { useElection } from "../context/ElectionContext";
-
-const ACCOUNTS = [
-  {
-    username: "admin",
-    passcode: "admin123",
-    role: "admin",
-    label: "Chief Electoral Officer (Admin)",
-    icon: Sliders,
-    color: "#2563eb",
-    desc: "Complete election administration, candidates, voter registry, and audit ledger."
-  },
-  {
-    username: "officer",
-    passcode: "verify123",
-    role: "verify",
-    label: "Verification Officer Desk",
-    icon: ShieldCheck,
-    color: "#059669",
-    desc: "Student ID check-in desk, voter eligibility verification, and EVM booth unlocking."
-  },
-  {
-    username: "booth",
-    passcode: "booth123",
-    role: "evm",
-    label: "EVM Voting Terminal",
-    icon: Vote,
-    color: "#d97706",
-    desc: "Isolated electronic voting machine booth for students to cast secret ballots."
-  },
-  {
-    username: "live",
-    passcode: "live123",
-    role: "live",
-    label: "Public Results Display",
-    icon: BarChart3,
-    color: "#7c3aed",
-    desc: "Public view-only projection screen for real-time live election results."
-  }
-];
+import { initialStationCredentials } from "../data/initialData";
 
 export const LoginScreen = ({ onLoginSuccess }) => {
   const { electionConfig, firebaseStatus, voters, ballots } = useElection();
   
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const activeCreds = electionConfig?.stationCredentials || initialStationCredentials;
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -68,37 +32,74 @@ export const LoginScreen = ({ onLoginSuccess }) => {
     const cleanUser = usernameInput.trim().toLowerCase();
     const cleanPass = passwordInput.trim();
 
-    // Map alternate aliases
-    let targetAccount = ACCOUNTS.find(
-      (acc) => acc.username === cleanUser && acc.passcode === cleanPass
-    );
-
-    // Accept aliases
-    if (!targetAccount) {
-      if (cleanUser === "verify" && cleanPass === "verify123") {
-        targetAccount = ACCOUNTS.find((a) => a.role === "verify");
-      } else if (cleanUser === "evm" && cleanPass === "booth123") {
-        targetAccount = ACCOUNTS.find((a) => a.role === "evm");
-      } else if (cleanUser === "public" && cleanPass === "live123") {
-        targetAccount = ACCOUNTS.find((a) => a.role === "live");
-      }
+    if (!cleanUser || !cleanPass) {
+      setErrorMessage("Please enter both Station ID and Security Password.");
+      return;
     }
 
-    if (targetAccount) {
-      onLoginSuccess({
-        role: targetAccount.role,
-        username: targetAccount.username,
-        label: targetAccount.label
-      });
+    // Role Matcher against dynamic configured credentials
+    let authenticatedStation = null;
+
+    // 1. Chief Electoral Officer (Admin)
+    const adminCred = activeCreds.admin || initialStationCredentials.admin;
+    if (
+      cleanUser === adminCred.username.toLowerCase() &&
+      cleanPass === adminCred.passcode
+    ) {
+      authenticatedStation = {
+        role: "admin",
+        username: adminCred.username,
+        label: adminCred.label || "Chief Electoral Officer (Admin)"
+      };
+    }
+
+    // 2. Verification Officer Desk
+    const verifyCred = activeCreds.verify || initialStationCredentials.verify;
+    if (
+      !authenticatedStation &&
+      (cleanUser === verifyCred.username.toLowerCase() || cleanUser === "verify" || cleanUser === "officer") &&
+      cleanPass === verifyCred.passcode
+    ) {
+      authenticatedStation = {
+        role: "verify",
+        username: verifyCred.username,
+        label: verifyCred.label || "Verification Officer Desk"
+      };
+    }
+
+    // 3. EVM Voting Terminal
+    const evmCred = activeCreds.evm || initialStationCredentials.evm;
+    if (
+      !authenticatedStation &&
+      (cleanUser === evmCred.username.toLowerCase() || cleanUser === "booth" || cleanUser === "evm") &&
+      cleanPass === evmCred.passcode
+    ) {
+      authenticatedStation = {
+        role: "evm",
+        username: evmCred.username,
+        label: evmCred.label || "EVM Voting Terminal"
+      };
+    }
+
+    // 4. Public Live Results Display
+    const liveCred = activeCreds.live || initialStationCredentials.live;
+    if (
+      !authenticatedStation &&
+      (cleanUser === liveCred.username.toLowerCase() || cleanUser === "live" || cleanUser === "public") &&
+      cleanPass === liveCred.passcode
+    ) {
+      authenticatedStation = {
+        role: "live",
+        username: liveCred.username,
+        label: liveCred.label || "Public Results Display"
+      };
+    }
+
+    if (authenticatedStation) {
+      onLoginSuccess(authenticatedStation);
     } else {
-      setErrorMessage("Invalid ID or Password. Please check your credentials below.");
+      setErrorMessage("Access Denied: Invalid Station ID or Security Password.");
     }
-  };
-
-  const handleQuickFill = (acc) => {
-    setUsernameInput(acc.username);
-    setPasswordInput(acc.passcode);
-    setErrorMessage("");
   };
 
   const handleDirectPublicLive = () => {
@@ -124,7 +125,7 @@ export const LoginScreen = ({ onLoginSuccess }) => {
           </div>
           <h1 className="login-main-title">{electionConfig.title}</h1>
           <p className="login-subtitle">
-            Official Role-Based Authentication Portal • Sign in with your designated Station ID & Password
+            Official Election Security Portal • Authorized Station Personnel Only
           </p>
         </div>
 
@@ -136,7 +137,7 @@ export const LoginScreen = ({ onLoginSuccess }) => {
             </div>
             <div>
               <h2 className="login-card-title">Station Security Login</h2>
-              <p className="login-card-sub">Access is strictly restricted by assigned role</p>
+              <p className="login-card-sub">Password authentication required for all official terminals</p>
             </div>
           </div>
 
@@ -149,33 +150,56 @@ export const LoginScreen = ({ onLoginSuccess }) => {
 
           <form onSubmit={handleLogin} className="login-form">
             <div className="form-group">
-              <label>Station ID / Username</label>
+              <label htmlFor="station-id-input">Station ID / Username</label>
               <div className="input-with-icon">
                 <User size={18} className="field-icon" />
                 <input
+                  id="station-id-input"
                   type="text"
                   required
                   autoFocus
-                  placeholder="Enter Station ID (e.g. admin, officer, booth, live)"
+                  placeholder="Enter designated Station ID"
                   value={usernameInput}
                   onChange={(e) => setUsernameInput(e.target.value)}
                   className="form-input with-icon"
+                  autoComplete="username"
                 />
               </div>
             </div>
 
             <div className="form-group">
-              <label>Security Password / PIN</label>
-              <div className="input-with-icon">
+              <label htmlFor="station-password-input">Security Password</label>
+              <div className="input-with-icon" style={{ position: "relative" }}>
                 <KeyRound size={18} className="field-icon" />
                 <input
-                  type="password"
+                  id="station-password-input"
+                  type={showPassword ? "text" : "password"}
                   required
-                  placeholder="Enter Password..."
+                  placeholder="Enter Station Password..."
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
                   className="form-input with-icon"
+                  autoComplete="current-password"
+                  style={{ paddingRight: "42px" }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    right: "12px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    padding: "4px"
+                  }}
+                  title={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
@@ -185,37 +209,6 @@ export const LoginScreen = ({ onLoginSuccess }) => {
             </button>
           </form>
 
-          {/* Quick 1-Click Fill Helper for Evaluator */}
-          <div className="login-quick-roles mt-4">
-            <div className="quick-roles-title">
-              <span>Quick Demo Credentials (Click to fill):</span>
-            </div>
-            <div className="quick-roles-grid">
-              {ACCOUNTS.map((acc) => {
-                const Icon = acc.icon;
-                const isSelected = usernameInput === acc.username;
-                return (
-                  <button
-                    key={acc.role}
-                    type="button"
-                    onClick={() => handleQuickFill(acc)}
-                    className={`quick-role-chip ${isSelected ? "selected" : ""}`}
-                  >
-                    <div className="chip-icon" style={{ color: acc.color }}>
-                      <Icon size={15} />
-                    </div>
-                    <div className="chip-info">
-                      <div className="chip-name">{acc.label.split("(")[0]}</div>
-                      <div className="chip-creds font-mono">
-                        {acc.username} / {acc.passcode}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           <div className="login-footer-action text-center mt-3">
             <button
               type="button"
@@ -223,7 +216,7 @@ export const LoginScreen = ({ onLoginSuccess }) => {
               className="btn-text-link"
             >
               <BarChart3 size={15} />
-              <span>Or Open Public Results Projector Screen (View Only)</span>
+              <span>Open Public Results Screen (Read-Only Telemetry)</span>
             </button>
           </div>
         </div>
