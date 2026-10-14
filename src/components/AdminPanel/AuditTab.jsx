@@ -146,7 +146,7 @@ export const AuditTab = () => {
                 </div>
                 {winner && winner.votes > 0 ? (
                   <div className="cert-winner-row">
-                    <div className="winner-symbol">{winner.symbolIcon}</div>
+                    <div className="winner-symbol">{winner.symbolIcon || "🏆"}</div>
                     <div className="winner-details">
                       <div className="winner-name">{winner.name}</div>
                       <div className="winner-dept">{winner.department} • {winner.rollNo}</div>

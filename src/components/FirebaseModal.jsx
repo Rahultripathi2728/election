@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useElection } from "../context/ElectionContext";
 import { getSavedFirebaseConfig } from "../services/firebase";
+import { Modal } from "./common/Modal";
 
 export const FirebaseModal = ({ isOpen, onClose }) => {
   const { firebaseStatus, configureFirebase } = useElection();
@@ -46,20 +47,18 @@ export const FirebaseModal = ({ isOpen, onClose }) => {
 
   const handleFillDemoKeys = () => {
     setConfig({
-      apiKey: "AIzaSyDemoElectionKey2026StateGovtCampus",
-      authDomain: "paperless-election-system.firebaseapp.com",
-      projectId: "paperless-election-system",
-      storageBucket: "paperless-election-system.appspot.com",
-      messagingSenderId: "9827364123",
-      appId: "1:9827364123:web:7f6a5b4c3d2e1f0"
+      apiKey: "AIzaSyBLHp185MB1hqBWyakKrgWgRVEzJAUgHYg",
+      authDomain: "election-live-8921a.firebaseapp.com",
+      projectId: "election-live-8921a",
+      storageBucket: "election-live-8921a.firebasestorage.app",
+      messagingSenderId: "171253767960",
+      appId: "1:171253767960:web:3f7b0c179aaaaa2e16486d"
     });
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content firebase-modal-card" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="modal-header">
+    <Modal isOpen={isOpen} onClose={onClose} size="lg" className="firebase-modal-card">
+      <div className="modal-header">
           <div className="modal-title-wrap">
             <div className="modal-icon-badge">
               <Cloud size={22} color="#2563eb" />
@@ -202,7 +201,6 @@ export const FirebaseModal = ({ isOpen, onClose }) => {
             </div>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 };

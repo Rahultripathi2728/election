@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables
+.env
+.env*.local
+
+# Temporary generator files
+candidate_jpeg_photos.json
+candidates_with_photos.json
+

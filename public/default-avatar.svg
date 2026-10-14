@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <defs>
+    <linearGradient id="avatarBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#CBD5E1"/>
+    </linearGradient>
+    <linearGradient id="avatarUserGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#94A3B8"/>
+      <stop offset="100%" stop-color="#64748B"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circular avatar container -->
+  <rect width="200" height="200" rx="100" fill="url(#avatarBgGrad)"/>
+  <!-- User Head Silhouette -->
+  <circle cx="100" cy="72" r="34" fill="url(#avatarUserGrad)"/>
+  <!-- User Shoulders Silhouette -->
+  <path d="M42 168 C42 130, 68 116, 100 116 C132 116, 158 130, 158 168 C158 172, 155 175, 150 175 L50 175 C45 175, 42 172, 42 168 Z" fill="url(#avatarUserGrad)"/>
+</svg>

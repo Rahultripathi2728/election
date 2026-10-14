@@ -10,14 +10,19 @@ import {
   Radio, 
   Printer, 
   Sparkles,
-  Layers
+  Layers,
+  FileText
 } from "lucide-react";
 import { useElection } from "../../context/ElectionContext";
+import { DEFAULT_AVATAR } from "../../utils/constants";
+import { candidatePhotos } from "../../data/candidatePhotos";
+import { OfficialElectionReportModal } from "../AdminPanel/OfficialElectionReportModal";
 
 export const LiveResultsPanel = () => {
   const { electionConfig, positions, candidates, voters } = useElection();
   const [selectedPostFilter, setSelectedPostFilter] = useState("ALL");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showOfficialReport, setShowOfficialReport] = useState(false);
 
   const totalVoters = voters.length;
   const votedCount = voters.filter((v) => v.hasVoted).length;
@@ -69,7 +74,15 @@ export const LiveResultsPanel = () => {
             </div>
           </div>
 
-          <div className="live-header-btn-row">
+            <button
+              onClick={() => setShowOfficialReport(true)}
+              className="btn-primary"
+              style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.9rem", fontSize: "0.85rem", fontWeight: "600" }}
+              title="Generate Official Election & Ballot Audit Report (PDF)"
+            >
+              <FileText size={16} />
+              <span>Official PDF Report</span>
+            </button>
             <button
               onClick={toggleFullscreen}
               className="btn-secondary btn-icon-only"
@@ -77,16 +90,8 @@ export const LiveResultsPanel = () => {
             >
               {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </button>
-            <button
-              onClick={() => window.print()}
-              className="btn-secondary btn-icon-only"
-              title="Print Current Standings"
-            >
-              <Printer size={18} />
-            </button>
           </div>
         </div>
-      </div>
 
       {/* Position Filter Pills */}
       <div className="live-filter-strip">
@@ -141,7 +146,7 @@ export const LiveResultsPanel = () => {
                 <div className="leader-spotlight-bar">
                   <Award size={18} color="#059669" />
                   <span>
-                    Currently Leading: <strong>{leader.name}</strong> ({leader.symbolName})
+                    Currently Leading: <strong>{leader.name}</strong>{leader.symbolName ? ` (${leader.symbolName})` : ""}
                   </span>
                   {leadMargin > 0 && runnerUp ? (
                     <span className="lead-margin-tag">+{leadMargin} vote lead</span>
@@ -168,16 +173,28 @@ export const LiveResultsPanel = () => {
                       {/* Avatar & Symbol */}
                       <div className="live-avatar-cell">
                         <img
-                          src={cand.avatarUrl}
+                          src={
+                            cand.avatarUrl &&
+                            cand.avatarUrl !== DEFAULT_AVATAR &&
+                            !cand.avatarUrl.startsWith("data:image/svg+xml")
+                              ? cand.avatarUrl
+                              : candidatePhotos[cand.id] || DEFAULT_AVATAR
+                          }
                           alt={cand.name}
                           className="live-avatar-img"
                           onError={(e) => {
-                            e.target.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80";
+                            if (candidatePhotos[cand.id]) {
+                              e.target.src = candidatePhotos[cand.id];
+                            } else {
+                              e.target.src = DEFAULT_AVATAR;
+                            }
                           }}
                         />
-                        <span className="live-symbol-badge" title={`Symbol: ${cand.symbolName}`}>
-                          {cand.symbolIcon}
-                        </span>
+                        {cand.symbolIcon ? (
+                          <span className="live-symbol-badge" title={`Symbol: ${cand.symbolName}`}>
+                            {cand.symbolIcon}
+                          </span>
+                        ) : null}
                       </div>
 
                       {/* Name & Department */}
@@ -224,6 +241,10 @@ export const LiveResultsPanel = () => {
           );
         })}
       </div>
+      <OfficialElectionReportModal
+        isOpen={showOfficialReport}
+        onClose={() => setShowOfficialReport(false)}
+      />
     </div>
   );
 };

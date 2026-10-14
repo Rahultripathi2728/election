@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Lock, 
   Unlock, 
@@ -6,16 +6,18 @@ import {
   ChevronRight, 
   ChevronLeft, 
   ShieldCheck, 
-  Award, 
   CheckCircle2, 
   AlertCircle, 
   Vote, 
-  Sparkles,
-  Radio
+  Radio,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { useElection } from "../../context/ElectionContext";
 import { soundManager } from "../../utils/sound";
+import { DEFAULT_AVATAR } from "../../utils/constants";
+import { candidatePhotos } from "../../data/candidatePhotos";
 
 export const EVMPanel = () => {
   const { electionConfig, positions, candidates, castBallot } = useElection();
@@ -25,23 +27,64 @@ export const EVMPanel = () => {
   const isSubmitting = boothState.status === "SUBMITTING";
   const authorizedVoter = boothState.authorizedVoter;
 
+  // Track the voter ID to prevent reset when the same voter is in progress
+  const lastAuthorizedVoterIdRef = useRef(null);
+
   // EVM Internal flow:
   // "WELCOME" -> "VOTING" -> "REVIEW" -> "SUCCESS"
   const [evmStep, setEvmStep] = useState("WELCOME");
   const [currentPosIndex, setCurrentPosIndex] = useState(0);
   const [ballotSelections, setBallotSelections] = useState({}); // { [positionId]: candidateId | 'NOTA' }
   const [countdown, setCountdown] = useState(electionConfig.autoLockDelaySeconds || 4);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // When booth unlocks from the verification desk, reset EVM state to Welcome
+  // Fullscreen toggle helper
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+        setIsFullscreen(false);
+      }
+    }
+  };
+
+  // Keyboard shortcut [F] for Fullscreen & listener for changes
   useEffect(() => {
-    if (isUnlocked && authorizedVoter) {
-      setEvmStep("WELCOME");
-      setCurrentPosIndex(0);
-      setBallotSelections({});
+    const handleKey = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (e.key === "f" || e.key === "F") {
+        toggleFullscreen();
+      }
+    };
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    window.addEventListener("keydown", handleKey);
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      document.removeEventListener("fullscreenchange", handleFsChange);
+    };
+  }, []);
+
+  // When booth unlocks from the verification desk, initialize EVM state ONLY for a new voter
+  useEffect(() => {
+    if (isUnlocked && authorizedVoter?.studentId) {
+      if (lastAuthorizedVoterIdRef.current !== authorizedVoter.studentId) {
+        lastAuthorizedVoterIdRef.current = authorizedVoter.studentId;
+        setEvmStep("WELCOME");
+        setCurrentPosIndex(0);
+        setBallotSelections({});
+      }
+    } else if (!isUnlocked && !isSubmitting) {
+      lastAuthorizedVoterIdRef.current = null;
     }
   }, [isUnlocked, authorizedVoter?.studentId]);
 
-  // Handle countdown when vote is submitted
+  // CRITICAL FIX: Handle countdown when vote is submitted, auto-reset when finished
   useEffect(() => {
     let timer = null;
     if (isSubmitting || evmStep === "SUCCESS") {
@@ -50,6 +93,11 @@ export const EVMPanel = () => {
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
+            lastAuthorizedVoterIdRef.current = null;
+            // Reset EVM state back to standby welcome & clear selections
+            setEvmStep("WELCOME");
+            setBallotSelections({});
+            setCurrentPosIndex(0);
             return 0;
           }
           return prev - 1;
@@ -60,6 +108,18 @@ export const EVMPanel = () => {
       if (timer) clearInterval(timer);
     };
   }, [isSubmitting, evmStep, electionConfig.autoLockDelaySeconds]);
+
+  // If booth gets locked externally or through timeout, guarantee EVM resets
+  useEffect(() => {
+    if (!isUnlocked && !isSubmitting) {
+      if (evmStep === "SUCCESS") {
+        lastAuthorizedVoterIdRef.current = null;
+        setEvmStep("WELCOME");
+        setBallotSelections({});
+        setCurrentPosIndex(0);
+      }
+    }
+  }, [isUnlocked, isSubmitting, evmStep]);
 
   // Candidate selection handler
   const handleSelectCandidate = (posId, candidateId) => {
@@ -100,6 +160,7 @@ export const EVMPanel = () => {
       // ignore
     }
 
+    lastAuthorizedVoterIdRef.current = null;
     setEvmStep("SUCCESS");
     castBallot(ballotSelections);
   };
@@ -107,9 +168,13 @@ export const EVMPanel = () => {
   // -------------------------------------------------------------
   // RENDER 1: LOCKED STANDBY SCREEN
   // -------------------------------------------------------------
-  if (!isUnlocked && !isSubmitting && evmStep !== "SUCCESS") {
+  // CRITICAL GUARD: Never lock out a voter who is actively in the middle of VOTING or REVIEW
+  // for the currently authorized session!
+  const isActivelyVoting = (evmStep === "VOTING" || evmStep === "REVIEW") && !!authorizedVoter;
+
+  if (!isUnlocked && !isActivelyVoting && (!isSubmitting || countdown <= 0) && (evmStep !== "SUCCESS" || countdown <= 0)) {
     return (
-      <div className="evm-terminal-container evm-locked-screen fade-in">
+      <div className={`evm-terminal-container evm-locked-screen fade-in ${isFullscreen ? "fullscreen-terminal" : ""}`}>
         <div className="evm-lock-beacon-card card-base">
           <div className="evm-lock-icon-wrap">
             <Lock size={64} className="lock-icon-pulse" />
@@ -146,9 +211,9 @@ export const EVMPanel = () => {
   // -------------------------------------------------------------
   // RENDER 2: SUCCESS / AUTO-LOCKDOWN SCREEN
   // -------------------------------------------------------------
-  if (isSubmitting || evmStep === "SUCCESS") {
+  if ((isSubmitting || evmStep === "SUCCESS") && countdown > 0) {
     return (
-      <div className="evm-terminal-container evm-success-screen fade-in">
+      <div className={`evm-terminal-container evm-success-screen fade-in ${isFullscreen ? "fullscreen-terminal" : ""}`}>
         <div className="evm-success-card card-base">
           <div className="success-icon-wrap">
             <CheckCircle2 size={72} color="#059669" />
@@ -197,7 +262,25 @@ export const EVMPanel = () => {
   }
 
   // Current Position in Ballot Sequence
-  const currentPos = positions[currentPosIndex] || positions[0];
+  const safePosIndex = Math.min(Math.max(0, currentPosIndex), Math.max(0, positions.length - 1));
+  const currentPos = positions[safePosIndex] || positions[0];
+
+  if (!currentPos || positions.length === 0) {
+    return (
+      <div className="evm-terminal-container evm-locked-screen fade-in">
+        <div className="evm-lock-beacon-card card-base">
+          <div className="evm-lock-icon-wrap">
+            <Lock size={64} className="lock-icon-pulse" />
+          </div>
+          <div className="evm-status-title">NO ELECTORAL POSTS CONFIGURED</div>
+          <p className="evm-lock-instructions">
+            Please ask the Election Administrator to configure electoral positions in the Admin Console.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const currentPosCandidates = candidates.filter((c) => c.positionId === currentPos.id);
   const selectedCandForPos = ballotSelections[currentPos.id];
 
@@ -206,44 +289,45 @@ export const EVMPanel = () => {
   // -------------------------------------------------------------
   if (evmStep === "WELCOME") {
     return (
-      <div className="evm-terminal-container evm-welcome-screen fade-in">
+      <div className={`evm-terminal-container evm-welcome-screen fade-in ${isFullscreen ? "fullscreen-terminal" : ""}`}>
         <div className="evm-induction-card card-base">
           <div className="induction-top-badge">
             <Unlock size={18} />
-            <span>Terminal Unlocked & Authorized</span>
+            <span>Terminal Authorized & Ready to Vote</span>
           </div>
 
           <div className="induction-profile-row">
             <img
-              src={authorizedVoter?.photoUrl}
+              src={authorizedVoter?.photoUrl || DEFAULT_AVATAR}
               alt={authorizedVoter?.name}
               className="induction-photo"
               onError={(e) => {
-                e.target.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80";
+                e.target.src = DEFAULT_AVATAR;
               }}
             />
             <div className="induction-text">
-              <span className="induction-greeting">Welcome,</span>
+              <span className="induction-greeting">Authorized Voter</span>
               <h2 className="induction-name">{authorizedVoter?.name}</h2>
               <div className="induction-meta-tags">
-                <span className="meta-tag font-mono">{authorizedVoter?.studentId}</span>
-                <span className="meta-tag">{authorizedVoter?.course}</span>
-                <span className="meta-tag">{authorizedVoter?.semester}</span>
+                <span className="meta-tag font-mono">ID: {authorizedVoter?.studentId}</span>
+                <span className="meta-tag">{authorizedVoter?.course || "B.Sc. Nursing"}</span>
+                <span className="meta-tag">{authorizedVoter?.year} ({authorizedVoter?.semester})</span>
               </div>
             </div>
           </div>
 
           <div className="induction-instructions card-base">
-            <h4>EVM Voting Instructions</h4>
+            <h4>Official EVM Voting Instructions</h4>
             <ol>
-              <li>You will cast your vote for <strong>{positions.length} electoral positions</strong> in sequence.</li>
-              <li>Press the blue voting button next to your preferred candidate (or select NOTA).</li>
-              <li>Review your complete ballot summary before final confirmation.</li>
-              <li>Once confirmed, your ballot is irreversibly encrypted and recorded.</li>
+              <li>Cast your vote for <strong>{positions.length} electoral positions</strong> one by one.</li>
+              <li>Press the blue voting button next to your chosen candidate (or select NOTA).</li>
+              <li>Review your complete ballot summary on the final review screen.</li>
+              <li>Once confirmed, your ballot is permanently encrypted and the EVM terminal locks.</li>
             </ol>
           </div>
 
           <button
+            id="btn-proceed-to-ballot"
             onClick={() => setEvmStep("VOTING")}
             className="btn-primary btn-large btn-begin-ballot"
           >
@@ -260,7 +344,7 @@ export const EVMPanel = () => {
   // -------------------------------------------------------------
   if (evmStep === "REVIEW") {
     return (
-      <div className="evm-terminal-container evm-review-screen fade-in">
+      <div className={`evm-terminal-container evm-review-screen fade-in ${isFullscreen ? "fullscreen-terminal" : ""}`}>
         <div className="evm-ballot-card card-base">
           <div className="ballot-header">
             <div>
@@ -288,10 +372,27 @@ export const EVMPanel = () => {
                   <div className="review-choice-col">
                     {cand ? (
                       <div className="review-selected-cand">
-                        <span className="review-cand-symbol">{cand.symbolIcon}</span>
+                        <img 
+                          src={
+                            cand.avatarUrl &&
+                            cand.avatarUrl !== DEFAULT_AVATAR &&
+                            !cand.avatarUrl.startsWith("data:image/svg+xml")
+                              ? cand.avatarUrl
+                              : candidatePhotos[cand.id] || DEFAULT_AVATAR
+                          } 
+                          alt={cand.name} 
+                          style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                          onError={(e) => {
+                            if (candidatePhotos[cand.id]) {
+                              e.target.src = candidatePhotos[cand.id];
+                            } else {
+                              e.target.src = DEFAULT_AVATAR;
+                            }
+                          }}
+                        />
                         <div>
                           <div className="review-cand-name">{cand.name}</div>
-                          <div className="review-cand-dept">{cand.department} • {cand.symbolName}</div>
+                          <div className="review-cand-dept">{cand.department}{cand.symbolName ? ` • ${cand.symbolName}` : ""}</div>
                         </div>
                       </div>
                     ) : isNota ? (
@@ -326,6 +427,7 @@ export const EVMPanel = () => {
             </button>
 
             <button
+              id="btn-cast-official-ballot"
               onClick={handleFinalSubmit}
               className="btn-success btn-large btn-cast-official"
             >
@@ -342,7 +444,7 @@ export const EVMPanel = () => {
   // RENDER 5: SEQUENTIAL POSITION BALLOT (VOTING STEP)
   // -------------------------------------------------------------
   return (
-    <div className="evm-terminal-container evm-ballot-screen fade-in">
+    <div className={`evm-terminal-container evm-ballot-screen fade-in ${isFullscreen ? "fullscreen-terminal" : ""}`}>
       <div className="evm-ballot-card card-base">
         {/* Stepper Progress Bar */}
         <div className="ballot-stepper-header">
@@ -384,17 +486,29 @@ export const EVMPanel = () => {
                 {/* Photo & Symbol */}
                 <div className="tile-profile-section">
                   <img
-                    src={cand.avatarUrl}
+                    src={
+                      cand.avatarUrl &&
+                      cand.avatarUrl !== DEFAULT_AVATAR &&
+                      !cand.avatarUrl.startsWith("data:image/svg+xml")
+                        ? cand.avatarUrl
+                        : candidatePhotos[cand.id] || DEFAULT_AVATAR
+                    }
                     alt={cand.name}
                     className="tile-avatar"
                     onError={(e) => {
-                      e.target.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80";
+                      if (candidatePhotos[cand.id]) {
+                        e.target.src = candidatePhotos[cand.id];
+                      } else {
+                        e.target.src = DEFAULT_AVATAR;
+                      }
                     }}
                   />
-                  <div className="tile-symbol-box" title={`Symbol: ${cand.symbolName}`}>
-                    <span className="tile-symbol-icon">{cand.symbolIcon}</span>
-                    <span className="tile-symbol-name">{cand.symbolName}</span>
-                  </div>
+                  {cand.symbolName ? (
+                    <div className="tile-symbol-box" title={`Symbol: ${cand.symbolName}`}>
+                      <span className="tile-symbol-icon">{cand.symbolIcon}</span>
+                      <span className="tile-symbol-name">{cand.symbolName}</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Candidate Info */}
@@ -423,6 +537,27 @@ export const EVMPanel = () => {
               </div>
             );
           })}
+
+          {/* Empty candidates notification */}
+          {currentPosCandidates.length === 0 && (
+            <div 
+              className="card-base text-center" 
+              style={{ 
+                gridColumn: "1 / -1", 
+                padding: "2rem 1.5rem", 
+                background: "rgba(255,255,255,0.03)", 
+                border: "1px dashed rgba(255,255,255,0.18)", 
+                borderRadius: "14px" 
+              }}
+            >
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 600, color: "#94a3b8", marginBottom: "0.4rem" }}>
+                No Candidates Nominated Yet for This Post
+              </h3>
+              <p style={{ fontSize: "0.9rem", color: "#64748b" }}>
+                You may register NOTA below or proceed directly to the next ballot position.
+              </p>
+            </div>
+          )}
 
           {/* NOTA Option */}
           {currentPos.allowNota !== false && (
@@ -470,8 +605,9 @@ export const EVMPanel = () => {
           </button>
 
           <button
+            id="btn-next-position"
             onClick={handleNextPosition}
-            disabled={!selectedCandForPos}
+            disabled={!selectedCandForPos && currentPosCandidates.length > 0}
             className="btn-primary btn-large"
           >
             <span>

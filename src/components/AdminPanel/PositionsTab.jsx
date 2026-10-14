@@ -12,11 +12,18 @@ import {
   ListOrdered 
 } from "lucide-react";
 import { useElection } from "../../context/ElectionContext";
+import { Modal } from "../common/Modal";
 
 export const PositionsTab = () => {
   const { positions, candidates, addPosition, updatePosition, deletePosition, movePositionSequence } = useElection();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPosId, setEditingPosId] = useState(null);
+  const [syncNotice, setSyncNotice] = useState("");
+
+  const triggerNotice = (msg) => {
+    setSyncNotice(msg);
+    setTimeout(() => setSyncNotice(""), 3500);
+  };
 
   // New Position Form state
   const [newTitle, setNewTitle] = useState("");
@@ -40,19 +47,22 @@ export const PositionsTab = () => {
       description: editDesc.trim()
     });
     setEditingPosId(null);
+    triggerNotice(`Saved "${editTitle.trim()}" permanently to Cloud Firestore!`);
   };
 
   const handleCreatePosition = (e) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
+    const title = newTitle.trim();
     addPosition({
-      title: newTitle.trim(),
+      title,
       description: newDesc.trim() || "Electoral Post",
       allowNota
     });
     setNewTitle("");
     setNewDesc("");
     setShowAddModal(false);
+    triggerNotice(`Created "${title}" and saved permanently to Cloud Firestore!`);
   };
 
   return (
@@ -70,6 +80,28 @@ export const PositionsTab = () => {
           <span>Add New Electoral Post</span>
         </button>
       </div>
+
+      {syncNotice && (
+        <div 
+          className="fade-in"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: "rgba(16, 185, 129, 0.15)",
+            border: "1px solid rgba(16, 185, 129, 0.4)",
+            color: "#34d399",
+            padding: "10px 16px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            fontSize: "0.9rem",
+            fontWeight: 500
+          }}
+        >
+          <Check size={18} />
+          <span>{syncNotice}</span>
+        </div>
+      )}
 
       {/* Positions Ordering Notice */}
       <div className="sequence-callout">
@@ -152,7 +184,7 @@ export const PositionsTab = () => {
                 <div className="pos-cand-preview">
                   {posCandidates.map((c) => (
                     <span key={c.id} className="cand-mini-pill" title={`${c.name} (${c.department})`}>
-                      <span className="cand-mini-symbol">{c.symbolIcon}</span>
+                      {c.symbolIcon ? <span className="cand-mini-symbol">{c.symbolIcon}</span> : null}
                       <span className="cand-mini-name">{c.name}</span>
                     </span>
                   ))}
@@ -166,7 +198,10 @@ export const PositionsTab = () => {
               <div className="pos-controls">
                 <div className="seq-btn-group">
                   <button
-                    onClick={() => movePositionSequence(pos.id, "UP")}
+                    onClick={() => {
+                      movePositionSequence(pos.id, "UP");
+                      triggerNotice(`Updated ballot order in Cloud Firestore!`);
+                    }}
                     disabled={isFirst}
                     className="seq-btn"
                     title="Move earlier in ballot sequence"
@@ -174,7 +209,10 @@ export const PositionsTab = () => {
                     <ArrowUp size={16} />
                   </button>
                   <button
-                    onClick={() => movePositionSequence(pos.id, "DOWN")}
+                    onClick={() => {
+                      movePositionSequence(pos.id, "DOWN");
+                      triggerNotice(`Updated ballot order in Cloud Firestore!`);
+                    }}
                     disabled={isLast}
                     className="seq-btn"
                     title="Move later in ballot sequence"
@@ -195,6 +233,7 @@ export const PositionsTab = () => {
                     onClick={() => {
                       if (window.confirm(`Are you sure you want to delete "${pos.title}" and its candidates?`)) {
                         deletePosition(pos.id);
+                        triggerNotice(`Removed "${pos.title}" and saved to Cloud Firestore!`);
                       }
                     }}
                     className="action-icon-btn btn-delete"
@@ -209,77 +248,79 @@ export const PositionsTab = () => {
         })}
       </div>
 
-      {/* Add Position Modal */}
-      {showAddModal && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-wrap">
-                <div className="modal-icon-badge">
-                  <Layers size={20} color="#2563eb" />
-                </div>
-                <div>
-                  <h3>Add Electoral Post</h3>
-                  <p>Define a new executive post or representative seat for the election</p>
-                </div>
-              </div>
-              <button onClick={() => setShowAddModal(false)} className="modal-close-btn">
-                <X size={20} />
-              </button>
+      {/* Add Position Modal via Portal */}
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        size="md"
+      >
+        <div className="modal-header">
+          <div className="modal-title-wrap">
+            <div className="modal-icon-badge">
+              <Layers size={20} color="#2563eb" />
+            </div>
+            <div>
+              <h3>Add Electoral Post</h3>
+              <p>Define a new executive post or representative seat for the election</p>
+            </div>
+          </div>
+          <button onClick={() => setShowAddModal(false)} className="modal-close-btn" type="button">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleCreatePosition}>
+          <div className="modal-form-body">
+            <div className="form-group">
+              <label>Position / Post Title *</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Joint Secretary, Treasurer, Batch Representative"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                className="form-input"
+                autoFocus
+              />
             </div>
 
-            <form onSubmit={handleCreatePosition} className="modal-form-body">
-              <div className="form-group">
-                <label>Position / Post Title *</label>
+            <div className="form-group mt-3">
+              <label>Role Description & Mandate</label>
+              <textarea
+                rows={3}
+                placeholder="Briefly describe the responsibilities of this position..."
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group checkbox-group mt-3">
+              <label className="checkbox-label">
                 <input
-                  type="text"
-                  required
-                  placeholder="e.g. Joint Secretary, Treasurer, Batch Representative"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  className="form-input"
-                  autoFocus
+                  type="checkbox"
+                  checked={allowNota}
+                  onChange={(e) => setAllowNota(e.target.checked)}
                 />
-              </div>
-
-              <div className="form-group">
-                <label>Role Description & Mandate</label>
-                <textarea
-                  rows={3}
-                  placeholder="Briefly describe the responsibilities of this position..."
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  className="form-input"
-                />
-              </div>
-
-              <div className="form-group checkbox-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={allowNota}
-                    onChange={(e) => setAllowNota(e.target.checked)}
-                  />
-                  <span>Allow NOTA (None of the Above) option for this post</span>
-                </label>
-              </div>
-
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  <Plus size={16} /> Create Position
-                </button>
-              </div>
-            </form>
+                <span>Allow NOTA (None of the Above) option for this post</span>
+              </label>
+            </div>
           </div>
-        </div>
-      )}
+
+          <div className="modal-footer">
+            <button
+              type="button"
+              onClick={() => setShowAddModal(false)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary">
+              <Plus size={16} /> Create Position
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };
