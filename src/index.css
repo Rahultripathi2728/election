@@ -416,3 +416,448 @@ input, select, textarea {
   border-color: #fecaca !important;
 }
 
+/* =========================================================
+   PUBLIC ELECTION PORTAL DESIGN SYSTEM (RESPONSIVE & ACCESSIBLE)
+   ========================================================= */
+
+:root {
+  --gehu-navy: #002147;
+  --gehu-navy-dark: #00152e;
+  --gehu-navy-light: #0a2f5c;
+  --gehu-gold: #c59b27;
+  --gehu-gold-light: #fef3c7;
+  --gehu-crimson: #991b1b;
+  --gehu-crimson-subtle: #fef2f2;
+}
+
+.public-portal-layout {
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 24px 28px 64px;
+  box-sizing: border-box;
+}
+
+/* Institutional Masthead */
+.public-masthead {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  box-shadow: 0 4px 16px -2px rgba(0, 33, 71, 0.05);
+  padding: 20px 28px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  transition: all 0.2s ease;
+}
+
+.public-masthead-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 1 1 auto;
+}
+
+.public-logo-img {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 33, 71, 0.06);
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.public-masthead-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.public-institution-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #002147;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.public-main-heading {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #002147;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.public-sub-heading {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.public-masthead-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.public-login-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #002147;
+  color: #ffffff;
+  border: 1px solid #001b3a;
+  padding: 10px 22px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 33, 71, 0.2);
+  transition: all 0.18s ease;
+}
+
+.public-login-btn:hover {
+  background: #00152e;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 33, 71, 0.28);
+}
+
+.public-login-btn:active {
+  transform: translateY(0);
+}
+
+/* 2-Segmented Portal Navigation */
+.public-nav-segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  margin-bottom: 24px;
+}
+
+.public-tab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.public-tab-btn:hover:not(.active) {
+  background: #f8fafc;
+  color: var(--text-main);
+}
+
+.public-tab-btn.active {
+  background: #002147;
+  color: #ffffff;
+  border-color: #001938;
+  box-shadow: 0 2px 8px rgba(0, 33, 71, 0.2);
+}
+
+/* Institutional Announcement / Countdown Banner */
+.public-announcement-card {
+  background: #002147;
+  border: 1px solid rgba(197, 155, 39, 0.3);
+  border-radius: 16px;
+  padding: 24px 30px;
+  color: #ffffff;
+  box-shadow: 0 8px 24px -4px rgba(0, 33, 71, 0.25);
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.public-announcement-body {
+  flex: 1 1 auto;
+}
+
+.public-announcement-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(197, 155, 39, 0.15);
+  border: 1px solid rgba(197, 155, 39, 0.4);
+  color: #fbbf24;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.public-announcement-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.public-announcement-desc {
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+  max-width: 720px;
+}
+
+/* Countdown Clock Cluster */
+.countdown-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.countdown-box {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 10px 16px;
+  min-width: 68px;
+  text-align: center;
+}
+
+.countdown-digits {
+  font-size: 1.85rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: #fbbf24;
+  line-height: 1;
+}
+
+.countdown-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.countdown-separator {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: rgba(251, 191, 36, 0.6);
+  user-select: none;
+}
+
+/* Responsive Candidate Grid */
+.public-candidates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 18px;
+}
+
+/* Filter bar */
+.public-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.public-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.public-filter-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.public-filter-btn {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f8fafc;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.public-filter-btn.active {
+  background: #002147;
+  color: #ffffff;
+  border-color: #001938;
+}
+
+/* Institutional Footer */
+.public-portal-footer {
+  margin-top: 48px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 32px 32px 24px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+}
+
+.public-footer-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  flex-wrap: wrap;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.public-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 18px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* =========================================================
+   MOBILE RESPONSIVE BREAKPOINTS (< 768px & < 640px)
+   ========================================================= */
+
+@media (max-width: 860px) {
+  .public-announcement-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 20px 20px;
+    gap: 18px;
+  }
+  .countdown-cluster {
+    width: 100%;
+    justify-content: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    padding-top: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .public-portal-layout {
+    padding: 12px 14px 40px;
+  }
+  
+  .public-masthead {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px 16px;
+    gap: 14px;
+  }
+
+  .public-masthead-brand {
+    align-items: center;
+    gap: 12px;
+  }
+
+  .public-logo-img {
+    width: 48px;
+    height: 48px;
+  }
+
+  .public-main-heading {
+    font-size: 1.18rem;
+  }
+
+  .public-sub-heading {
+    font-size: 0.78rem;
+  }
+
+  .public-masthead-right {
+    width: 100%;
+    justify-content: space-between;
+    border-top: 1px solid var(--border-light);
+    padding-top: 12px;
+  }
+
+  .public-login-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 16px;
+    font-size: 0.88rem;
+  }
+
+  .public-candidates-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .public-footer-top {
+    flex-direction: column;
+    gap: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .public-nav-segmented {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .public-tab-btn {
+    padding: 10px 12px;
+    font-size: 0.84rem;
+  }
+
+  .countdown-box {
+    min-width: 54px;
+    padding: 8px 8px;
+  }
+
+  .countdown-digits {
+    font-size: 1.45rem;
+  }
+
+  .countdown-tag {
+    font-size: 0.6rem;
+  }
+}
+
+

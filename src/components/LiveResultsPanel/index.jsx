@@ -3,23 +3,15 @@ import {
   Award, 
   Users, 
   Vote, 
-  Maximize2, 
-  Minimize2, 
   Radio, 
   Clock, 
   Lock, 
-  Unlock, 
   ShieldCheck, 
   Building, 
-  Sparkles,
-  ArrowRight,
-  TrendingUp,
-  Search,
-  CheckCircle2,
-  BarChart3,
-  ChevronRight,
-  RefreshCw,
-  Crown
+  CheckCircle2, 
+  BarChart3, 
+  ChevronRight, 
+  Crown 
 } from "lucide-react";
 import { useElection } from "../../context/ElectionContext";
 import { DEFAULT_AVATAR } from "../../utils/constants";
@@ -56,8 +48,6 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
   };
 
   const [selectedPostFilter, setSelectedPostFilter] = useState("ALL");
-  const [candidateSearchQuery, setCandidateSearchQuery] = useState("");
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [now, setNow] = useState(new Date());
 
   // Real-time clock ticker
@@ -84,32 +74,12 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
   const stage = electionConfig.electionStage || (electionConfig.status === "CONCLUDED" ? "CONCLUDED" : "LIVE_POLL");
   const publishedResults = electionConfig?.publishedResults;
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-        setIsFullscreen(false);
-      }
-    }
-  };
-
   const filteredPositions = selectedPostFilter === "ALL"
     ? positions
     : positions.filter((p) => p.id === selectedPostFilter);
 
   return (
-    <div 
-      className={`live-results-container fade-in ${isFullscreen ? "fullscreen-mode" : ""}`} 
-      style={{ 
-        width: "100%", 
-        maxWidth: "1600px", 
-        margin: "0 auto", 
-        padding: "20px 32px 48px" 
-      }}
-    >
+    <div className="public-portal-layout fade-in">
       {/* Staff Preview Return Banner */}
       {isStaffPreview && (
         <div style={{
@@ -146,85 +116,32 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
       )}
 
       {/* 1. PUBLIC INSTITUTIONAL HERO HEADER (DUAL LOGOS: GEHU & SNA) */}
-      <header className="card-base" style={{
-        padding: "18px 28px",
-        borderRadius: "16px",
-        background: "#ffffff",
-        border: "1.5px solid var(--border-light)",
-        boxShadow: "0 6px 24px rgba(0,0,0,0.05)",
-        marginBottom: "16px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-        gap: "18px"
-      }}>
-        {/* Left: Graphic Era Hill University Logo & Titles */}
-        <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
+      <header className="public-masthead">
+        <div className="public-masthead-brand">
           <img
             src={gehuLogo}
-            alt="Graphic Era Hill University Emblem"
-            style={{
-              width: "66px",
-              height: "66px",
-              objectFit: "contain",
-              borderRadius: "50%",
-              background: "#ffffff",
-              border: "1.5px solid #e2e8f0",
-              boxShadow: "0 3px 10px rgba(0,0,0,0.07)",
-              padding: "2px",
-              flexShrink: 0
-            }}
+            alt="Graphic Era Hill University"
+            className="public-logo-img"
           />
 
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-              <span style={{
-                background: "#fef2f2",
-                border: "1px solid #fecaca",
-                color: "#dc2626",
-                padding: "2px 10px",
-                borderRadius: "20px",
-                fontSize: "0.74rem",
-                fontWeight: 800,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase"
-              }}>
-                {electionConfig.institution || "Graphic Era Hill University"} • {electionConfig.department || "College of Nursing"}
-              </span>
+          <div className="public-masthead-titles">
+            <div className="public-institution-tag">
+              {electionConfig.institution || "Graphic Era Hill University"} • {electionConfig.department || "College of Nursing"}
             </div>
-
-            <h1 style={{
-              margin: 0,
-              fontSize: "1.55rem",
-              fontWeight: 900,
-              color: "#002147",
-              lineHeight: 1.2
-            }}>
+            <h1 className="public-main-heading">
               {electionConfig.title || "SNA Student Nursing Council Elections 2026"}
             </h1>
-            <p style={{ margin: "3px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+            <p className="public-sub-heading">
               Student Nurses' Association of India (SNA) • Official Campus Electoral Portal
             </p>
           </div>
         </div>
 
-        {/* Right: SNA Logo + Staff / Admin Login Button */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div className="public-masthead-right">
           <img
             src={snaLogo}
-            alt="Student Nurses Association of India Emblem"
-            style={{
-              width: "66px",
-              height: "66px",
-              objectFit: "contain",
-              borderRadius: "50%",
-              background: "#ffffff",
-              border: "1.5px solid #e2e8f0",
-              boxShadow: "0 3px 10px rgba(0,0,0,0.07)",
-              padding: "2px",
-              flexShrink: 0
-            }}
+            alt="Student Nurses Association of India"
+            className="public-logo-img"
           />
 
           {onOpenLogin && (
@@ -232,129 +149,49 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
               id="btn-open-staff-login"
               type="button"
               onClick={onOpenLogin}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                background: "#002147",
-                color: "#ffffff",
-                border: "none",
-                padding: "10px 20px",
-                borderRadius: "10px",
-                fontWeight: 800,
-                fontSize: "0.9rem",
-                boxShadow: "0 4px 14px rgba(0, 33, 71, 0.25)",
-                cursor: "pointer",
-                transition: "all 0.2s ease"
-              }}
-              title="Chief Electoral Officer, Verification Desk & EVM Station Login"
+              className="public-login-btn"
+              title="Official Electoral System Login"
             >
-              <Lock size={16} />
-              <span>Staff / Station Login</span>
+              <Lock size={15} />
+              <span>Login</span>
             </button>
           )}
-
-          <button
-            onClick={toggleFullscreen}
-            className="btn-secondary"
-            style={{ padding: "10px 14px", borderRadius: "10px" }}
-            title={isFullscreen ? "Exit Fullscreen" : "Projector Fullscreen View"}
-          >
-            {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-          </button>
         </div>
       </header>
 
       {/* 2. PUBLIC PORTAL NAVIGATION TABS: CONTESTANTS vs RESULTS */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-        gap: "14px",
-        marginBottom: "20px",
-        background: "#ffffff",
-        padding: "8px 12px",
-        borderRadius: "14px",
-        border: "1.5px solid var(--border-light)",
-        boxShadow: "0 4px 14px rgba(0,0,0,0.03)"
-      }}>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button
-            id="tab-btn-contestants"
-            type="button"
-            onClick={() => handleTabSwitch("CONTESTANTS")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "10px 24px",
-              borderRadius: "10px",
-              fontWeight: 800,
-              fontSize: "0.92rem",
-              border: "none",
-              cursor: "pointer",
-              transition: "all 0.2s ease",
-              background: activeTab === "CONTESTANTS" ? "#002147" : "#f8fafc",
-              color: activeTab === "CONTESTANTS" ? "#ffffff" : "var(--text-secondary)",
-              boxShadow: activeTab === "CONTESTANTS" ? "0 4px 14px rgba(0, 33, 71, 0.25)" : "none"
-            }}
-          >
-            <Users size={18} />
-            <span>1. Nominated Contestants & Live Status</span>
-          </button>
+      <div className="public-nav-segmented">
+        <button
+          id="tab-btn-contestants"
+          type="button"
+          onClick={() => handleTabSwitch("CONTESTANTS")}
+          className={`public-tab-btn ${activeTab === "CONTESTANTS" ? "active" : ""}`}
+        >
+          <Users size={17} />
+          <span>1. Nominated Contestants & Live Status</span>
+        </button>
 
-          <button
-            id="tab-btn-results"
-            type="button"
-            onClick={() => handleTabSwitch("RESULTS")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "10px 24px",
-              borderRadius: "10px",
-              fontWeight: 800,
-              fontSize: "0.92rem",
-              border: "none",
-              cursor: "pointer",
-              transition: "all 0.2s ease",
-              background: activeTab === "RESULTS" ? "#002147" : "#f8fafc",
-              color: activeTab === "RESULTS" ? "#ffffff" : "var(--text-secondary)",
-              boxShadow: activeTab === "RESULTS" ? "0 4px 14px rgba(0, 33, 71, 0.25)" : "none"
-            }}
-          >
-            <BarChart3 size={18} />
-            <span>2. Official Results & Tallies</span>
-            {publishedResults && (
-              <span style={{
-                background: "#059669",
-                color: "#ffffff",
-                padding: "2px 8px",
-                borderRadius: "12px",
-                fontSize: "0.7rem",
-                fontWeight: 900
-              }}>
-                Updated {publishedResults.publishedAt}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Contestant Search Box (when on Contestants tab) */}
-        {activeTab === "CONTESTANTS" && (
-          <div style={{ position: "relative", minWidth: "280px" }}>
-            <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-            <input
-              type="text"
-              placeholder="Search candidate name or roll no..."
-              value={candidateSearchQuery}
-              onChange={(e) => setCandidateSearchQuery(e.target.value)}
-              className="form-input"
-              style={{ paddingLeft: "36px", height: "40px", fontSize: "0.85rem", borderRadius: "10px" }}
-            />
-          </div>
-        )}
+        <button
+          id="tab-btn-results"
+          type="button"
+          onClick={() => handleTabSwitch("RESULTS")}
+          className={`public-tab-btn ${activeTab === "RESULTS" ? "active" : ""}`}
+        >
+          <BarChart3 size={17} />
+          <span>2. Official Results & Tallies</span>
+          {publishedResults && (
+            <span style={{
+              background: activeTab === "RESULTS" ? "#fbbf24" : "#059669",
+              color: activeTab === "RESULTS" ? "#002147" : "#ffffff",
+              padding: "2px 8px",
+              borderRadius: "4px",
+              fontSize: "0.7rem",
+              fontWeight: 800
+            }}>
+              Updated {publishedResults.publishedAt}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* ======================================================== */}
@@ -362,67 +199,44 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
       {/* ======================================================== */}
       {activeTab === "CONTESTANTS" && (
         <div className="fade-in">
-          {/* STAGE A: PRE-POLL COUNTDOWN (GEHU OFFICIAL NAVY BLUE & CRIMSON) */}
+          {/* STAGE A: PRE-POLL COUNTDOWN (GEHU OFFICIAL NAVY BLUE & WARM GOLD) */}
           {stage === "PRE_POLL" && (
-            <div className="card-base fade-in" style={{
-              padding: "22px 30px",
-              borderRadius: "16px",
-              background: "linear-gradient(135deg, #002147 0%, #0a2540 50%, #1e3a8a 100%)",
-              border: "2px solid #b45309",
-              color: "#ffffff",
-              boxShadow: "0 10px 30px rgba(0, 33, 71, 0.35)",
-              marginBottom: "20px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "18px"
-            }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                  <span style={{
-                    background: "#dc2626",
-                    color: "#ffffff",
-                    padding: "3px 10px",
-                    borderRadius: "20px",
-                    fontSize: "0.76rem",
-                    fontWeight: 900,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    boxShadow: "0 2px 8px rgba(220, 38, 38, 0.4)"
-                  }}>
-                    ⏳ Pre-Poll Countdown • Official Polling Commences at 3:00 PM (15:00 IST)
-                  </span>
+            <div className="public-announcement-card fade-in">
+              <div className="public-announcement-body">
+                <div className="public-announcement-badge">
+                  <Clock size={13} />
+                  <span>Official Voting Commences Today at 3:00 PM (15:00 IST)</span>
                 </div>
-                <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#ffffff", marginTop: "4px" }}>
-                  Graphic Era Hill University • College of Nursing SNA Elections 2026
-                </div>
-                <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginTop: "2px" }}>
-                  Review nominated student contestants and manifestos below. 3 electronic EVM terminals open at 3:00 PM.
-                </div>
+                <h2 className="public-announcement-title">
+                  Campus Polling Stations Open Soon
+                </h2>
+                <p className="public-announcement-desc">
+                  Electronic voting terminals across College of Nursing booths will open at 3:00 PM today.
+                  Students are requested to review nominated candidates and their official manifestos below before voting.
+                </p>
               </div>
 
-              {/* Countdown Clock Display */}
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ textAlign: "center", background: "rgba(255,255,255,0.12)", backdropFilter: "blur(4px)", padding: "10px 16px", borderRadius: "12px", minWidth: "70px", border: "1px solid rgba(251, 191, 36, 0.3)" }}>
-                  <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "monospace", color: "#fbbf24", lineHeight: 1 }}>
+              {/* Responsive Countdown Clock Display */}
+              <div className="countdown-cluster">
+                <div className="countdown-box">
+                  <div className="countdown-digits">
                     {String(countdownHours).padStart(2, "0")}
                   </div>
-                  <div style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", color: "#e2e8f0", marginTop: "3px" }}>Hours</div>
+                  <div className="countdown-tag">Hours</div>
                 </div>
-                <span style={{ fontSize: "1.6rem", fontWeight: 900, color: "#fbbf24" }}>:</span>
-                <div style={{ textAlign: "center", background: "rgba(255,255,255,0.12)", backdropFilter: "blur(4px)", padding: "10px 16px", borderRadius: "12px", minWidth: "70px", border: "1px solid rgba(251, 191, 36, 0.3)" }}>
-                  <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "monospace", color: "#fbbf24", lineHeight: 1 }}>
+                <span className="countdown-separator">:</span>
+                <div className="countdown-box">
+                  <div className="countdown-digits">
                     {String(countdownMinutes).padStart(2, "0")}
                   </div>
-                  <div style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", color: "#e2e8f0", marginTop: "3px" }}>Minutes</div>
+                  <div className="countdown-tag">Minutes</div>
                 </div>
-                <span style={{ fontSize: "1.6rem", fontWeight: 900, color: "#fbbf24" }}>:</span>
-                <div style={{ textAlign: "center", background: "rgba(255,255,255,0.12)", backdropFilter: "blur(4px)", padding: "10px 16px", borderRadius: "12px", minWidth: "70px", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
-                  <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "monospace", color: "#38bdf8", lineHeight: 1 }}>
+                <span className="countdown-separator">:</span>
+                <div className="countdown-box">
+                  <div className="countdown-digits">
                     {String(countdownSeconds).padStart(2, "0")}
                   </div>
-                  <div style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", color: "#e2e8f0", marginTop: "3px" }}>Seconds</div>
+                  <div className="countdown-tag">Seconds</div>
                 </div>
               </div>
             </div>
@@ -431,12 +245,13 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
           {/* STAGE B: VOTING IS LIVE (COUNTDOWN TIMER HIDDEN AS REQUESTED) */}
           {stage === "LIVE_POLL" && (
             <div className="card-base fade-in" style={{
-              padding: "18px 28px",
+              padding: "20px 28px",
               borderRadius: "16px",
-              background: "linear-gradient(135deg, #064e3b 0%, #047857 100%)",
+              background: "#064e3b",
+              border: "1px solid #047857",
               color: "#ffffff",
-              boxShadow: "0 8px 26px rgba(6, 78, 59, 0.28)",
-              marginBottom: "20px",
+              boxShadow: "0 6px 20px rgba(6, 78, 59, 0.2)",
+              marginBottom: "24px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -445,9 +260,9 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
             }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span className="live-dot" style={{ background: "#4ade80", boxShadow: "0 0 12px #4ade80", width: "12px", height: "12px" }} />
-                  <span style={{ fontSize: "0.9rem", fontWeight: 900, letterSpacing: "0.06em", color: "#bbf7d0", textTransform: "uppercase" }}>
-                    🟢 OFFICIAL VOTING IS LIVE & IN PROGRESS
+                  <span className="live-dot" style={{ background: "#4ade80", boxShadow: "0 0 10px #4ade80", width: "10px", height: "10px", borderRadius: "50%" }} />
+                  <span style={{ fontSize: "0.82rem", fontWeight: 800, letterSpacing: "0.06em", color: "#a7f3d0", textTransform: "uppercase" }}>
+                    Official Voting Is Live & In Progress
                   </span>
                 </div>
                 <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#ffffff", marginTop: "4px" }}>
@@ -459,11 +274,10 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
               </div>
 
               <div style={{
-                background: "rgba(255,255,255,0.15)",
-                backdropFilter: "blur(4px)",
+                background: "rgba(255,255,255,0.12)",
                 padding: "10px 20px",
-                borderRadius: "12px",
-                border: "1px solid rgba(255,255,255,0.25)",
+                borderRadius: "10px",
+                border: "1px solid rgba(255,255,255,0.2)",
                 textAlign: "center"
               }}>
                 <div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 800, color: "#d1fae5" }}>EVM Terminals</div>
@@ -743,38 +557,21 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
           {/* ======================================================== */}
           <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Filter Pills */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              borderBottom: "2px solid var(--border-light)",
-              paddingBottom: "12px",
-              flexWrap: "wrap",
-              gap: "12px"
-            }}>
+            <div className="public-filter-row">
               <div>
-                <h2 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 900, color: "var(--primary-navy)" }}>
+                <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800, color: "#002147" }}>
                   {stage === "CONCLUDED" ? "All Nominated Candidates Reference" : "Nominated Candidates & Manifestos"}
                 </h2>
-                <p style={{ margin: "2px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                <p style={{ margin: "2px 0 0", fontSize: "0.82rem", color: "var(--text-secondary)" }}>
                   Official roster of student contestants ordered by ballot sequence
                 </p>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto" }}>
+              <div className="public-filter-pills">
                 <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)" }}>Filter:</span>
                 <button
                   onClick={() => setSelectedPostFilter("ALL")}
-                  style={{
-                    border: "none",
-                    borderRadius: "20px",
-                    padding: "4px 14px",
-                    fontSize: "0.8rem",
-                    fontWeight: selectedPostFilter === "ALL" ? 800 : 600,
-                    cursor: "pointer",
-                    background: selectedPostFilter === "ALL" ? "#002147" : "#f1f5f9",
-                    color: selectedPostFilter === "ALL" ? "#ffffff" : "var(--text-secondary)"
-                  }}
+                  className={`public-filter-btn ${selectedPostFilter === "ALL" ? "active" : ""}`}
                 >
                   All Posts
                 </button>
@@ -782,17 +579,7 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
                   <button
                     key={p.id}
                     onClick={() => setSelectedPostFilter(p.id)}
-                    style={{
-                      border: "none",
-                      borderRadius: "20px",
-                      padding: "4px 14px",
-                      fontSize: "0.8rem",
-                      fontWeight: selectedPostFilter === p.id ? 800 : 600,
-                      cursor: "pointer",
-                      background: selectedPostFilter === p.id ? "#002147" : "#f1f5f9",
-                      color: selectedPostFilter === p.id ? "#ffffff" : "var(--text-secondary)",
-                      whiteSpace: "nowrap"
-                    }}
+                    className={`public-filter-btn ${selectedPostFilter === p.id ? "active" : ""}`}
                   >
                     {p.title}
                   </button>
@@ -804,22 +591,15 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
             {filteredPositions.map((pos) => {
               const posCandidates = candidates
                 .filter((c) => c.positionId === pos.id)
-                .filter((c) => {
-                  if (!candidateSearchQuery.trim()) return true;
-                  const q = candidateSearchQuery.toLowerCase();
-                  return c.name.toLowerCase().includes(q) || (c.rollNo && c.rollNo.toLowerCase().includes(q));
-                })
                 .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
 
-              if (candidateSearchQuery.trim() && posCandidates.length === 0) return null;
-
               return (
-                <div key={pos.id} className="card-base" style={{ padding: "22px", borderRadius: "16px", border: "1.5px solid var(--border-light)" }}>
+                <div key={pos.id} className="card-base" style={{ padding: "20px 22px", borderRadius: "16px", border: "1px solid var(--border-light)" }}>
                   {/* Position Header */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border-light)", paddingBottom: "12px", marginBottom: "18px" }}>
                     <div>
-                      <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#2563eb", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                        ELECTORAL OFFICE #{pos.sequence}
+                      <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#002147", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                        COUNCIL OFFICE #{pos.sequence}
                       </span>
                       <h3 style={{ margin: "2px 0 0", fontSize: "1.25rem", fontWeight: 900, color: "var(--primary-navy)" }}>
                         {pos.title}
@@ -831,17 +611,17 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
                     <span style={{
                       background: "#f1f5f9",
                       padding: "4px 12px",
-                      borderRadius: "20px",
-                      fontSize: "0.8rem",
-                      fontWeight: 800,
+                      borderRadius: "6px",
+                      fontSize: "0.78rem",
+                      fontWeight: 700,
                       color: "var(--text-secondary)"
                     }}>
                       {posCandidates.length} Nominees Contesting
                     </span>
                   </div>
 
-                  {/* Candidates Grid - Expansive, Fluid Layout */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "18px" }}>
+                  {/* Candidates Grid - Expansive, Responsive Layout */}
+                  <div className="public-candidates-grid">
                     {posCandidates.map((cand, idx) => {
                       const imgSrc = (cand.avatarUrl && cand.avatarUrl !== DEFAULT_AVATAR && !cand.avatarUrl.startsWith("data:image/svg+xml"))
                         ? cand.avatarUrl
@@ -968,8 +748,9 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
                             <span style={{ color: "var(--text-muted)" }}>
                               Symbol: <strong>{cand.symbolName || "Official Symbol"}</strong>
                             </span>
-                            <span style={{ color: "#059669", fontWeight: 800 }}>
-                              ✓ Eligible Candidate
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "#059669", fontWeight: 800 }}>
+                              <CheckCircle2 size={13} />
+                              <span>Eligible Nominee</span>
                             </span>
                           </div>
                         </div>
@@ -1245,6 +1026,54 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
           )}
         </div>
       )}
+
+      {/* 3. INSTITUTIONAL & ELECTORAL INTEGRITY FOOTER */}
+      <footer className="public-portal-footer">
+        <div className="public-footer-top">
+          <div style={{ maxWidth: "560px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+              <Building size={18} color="#002147" />
+              <strong style={{ fontSize: "0.95rem", color: "#002147" }}>
+                Graphic Era Hill University • College of Nursing
+              </strong>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+              Student Nurses' Association of India (SNA) Campus Chapter. Official Paperless Electoral System operated under the supervision of the Chief Electoral Officer and Faculty Advisory Board.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: "32px", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "#002147", letterSpacing: "0.04em", marginBottom: "8px" }}>
+                Electoral Governance
+              </div>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.8rem", color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: "5px" }}>
+                <li>• Code of Election Conduct 2026</li>
+                <li>• Verification Desk ID Policy</li>
+                <li>• Electronic Ballot Secrecy Act</li>
+              </ul>
+            </div>
+
+            <div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "#002147", letterSpacing: "0.04em", marginBottom: "8px" }}>
+                Voter Privacy Guarantee
+              </div>
+              <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-secondary)", maxWidth: "260px", lineHeight: 1.4 }}>
+                All electronic votes are anonymous, cryptographically segregated, and untraceable to student identity roll numbers.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="public-footer-bottom">
+          <span>© 2026 Graphic Era Hill University • Student Nurses' Association (SNA). All rights reserved.</span>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <span style={{ color: "var(--text-muted)" }}>Campus EVM v4.2 Pro</span>
+            <span>•</span>
+            <span style={{ color: "#059669", fontWeight: 700 }}>● Network Status: Secure</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };
