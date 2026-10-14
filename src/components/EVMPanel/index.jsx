@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  Lock, 
-  Unlock, 
-  Check, 
-  ChevronRight, 
-  ChevronLeft, 
-  ShieldCheck, 
-  CheckCircle2, 
-  AlertCircle, 
-  Vote, 
+import {
+  Lock,
+  Unlock,
+  Check,
+  ChevronRight,
+  ChevronLeft,
+  ShieldCheck,
+  CheckCircle2,
+  AlertCircle,
+  Vote,
   Radio,
   Maximize2,
   Minimize2
@@ -23,9 +23,7 @@ export const EVMPanel = ({ userSession }) => {
   const { electionConfig, positions, candidates, castBallot, cancelBoothAuthorization, booths, initialBooths } = useElection();
 
   const allBooths = booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []);
-  const [selectedBoothId, setSelectedBoothId] = useState(() => {
-    return userSession?.boothId || localStorage.getItem("active_evm_booth_id") || "BOOTH-1";
-  });
+  const selectedBoothId = userSession?.boothId || localStorage.getItem("active_evm_booth_id") || "BOOTH-1";
 
   const activeBooth = allBooths.find((b) => b.id === selectedBoothId) || allBooths[0] || electionConfig.boothState || {};
   const isUnlocked = activeBooth.status === "UNLOCKED";
@@ -37,8 +35,8 @@ export const EVMPanel = ({ userSession }) => {
   const lastAuthorizedVoterIdRef = useRef(null);
 
   // EVM Internal flow:
-  // "LOCKED" -> "WELCOME" -> "VOTING" -> "REVIEW" -> "SUCCESS"
-  const [evmStep, setEvmStep] = useState(isUnlocked ? "WELCOME" : "LOCKED");
+  // "WELCOME" -> "VOTING" -> "REVIEW" -> "SUCCESS"
+  const [evmStep, setEvmStep] = useState("WELCOME");
   const [currentPosIndex, setCurrentPosIndex] = useState(0);
   const [ballotSelections, setBallotSelections] = useState({}); // { [positionId]: candidateId | 'NOTA' }
   const [countdown, setCountdown] = useState(electionConfig.autoLockDelaySeconds || 4);
@@ -50,11 +48,11 @@ export const EVMPanel = ({ userSession }) => {
   // Fullscreen toggle helper
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
       setIsFullscreen(true);
     } else {
       if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
+        document.exitFullscreen().catch(() => { });
         setIsFullscreen(false);
       }
     }
@@ -82,14 +80,14 @@ export const EVMPanel = ({ userSession }) => {
   // Listen for explicit operator revoking of this booth
   useEffect(() => {
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-      const channel = new BroadcastChannel("paperless_election_broadcast_live");
+      const channel = new BroadcastChannel("paperless_election_sync_bus");
       const handleSync = (event) => {
         const { type, payload } = event.data;
         if (type === "STATE_SYNC" && payload?.isExplicitRevoke) {
           if (!payload.revokedBoothId || payload.revokedBoothId === activeBooth.id) {
             lastAuthorizedVoterIdRef.current = null;
             setSessionVoter(null);
-            setEvmStep("LOCKED");
+            setEvmStep("WELCOME");
             setBallotSelections({});
             setCurrentPosIndex(0);
           }
@@ -119,13 +117,10 @@ export const EVMPanel = ({ userSession }) => {
       // Never wipe voter or reset if the student is currently in the middle of VOTING or REVIEW
       lastAuthorizedVoterIdRef.current = null;
       setSessionVoter(null);
-      if (evmStep !== "LOCKED") {
-        setEvmStep("LOCKED");
-      }
     }
   }, [isUnlocked, authorizedVoter?.studentId, isSubmitting, evmStep]);
 
-  // CRITICAL FIX: Handle countdown when vote is submitted, auto-reset cleanly to LOCKED
+  // CRITICAL FIX: Handle countdown when vote is submitted, auto-reset when finished
   useEffect(() => {
     let timer = null;
     if (isSubmitting || evmStep === "SUCCESS") {
@@ -136,8 +131,8 @@ export const EVMPanel = ({ userSession }) => {
             clearInterval(timer);
             lastAuthorizedVoterIdRef.current = null;
             setSessionVoter(null);
-            // Reset EVM state directly to LOCKED standby & clear selections
-            setEvmStep("LOCKED");
+            // Reset EVM state back to standby welcome & clear selections
+            setEvmStep("WELCOME");
             setBallotSelections({});
             setCurrentPosIndex(0);
             if (isSubmitting) {
@@ -159,7 +154,7 @@ export const EVMPanel = ({ userSession }) => {
     if (!isUnlocked && !isSubmitting && evmStep === "SUCCESS") {
       lastAuthorizedVoterIdRef.current = null;
       setSessionVoter(null);
-      setEvmStep("LOCKED");
+      setEvmStep("WELCOME");
       setBallotSelections({});
       setCurrentPosIndex(0);
     }
@@ -226,42 +221,6 @@ export const EVMPanel = ({ userSession }) => {
           <div className="evm-booth-id">
             TERMINAL STATION: <strong>{activeBooth.name || activeBooth.shortName || activeBooth.id}</strong>
           </div>
-
-          {allBooths.length > 1 && (
-            <div style={{ marginTop: "10px", marginBottom: "6px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                Switch Terminal Station:
-              </span>
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center" }}>
-                {allBooths.map((b) => {
-                  const isCur = b.id === activeBooth.id;
-                  return (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedBoothId(b.id);
-                        try {
-                          localStorage.setItem("active_evm_booth_id", b.id);
-                        } catch (e) {}
-                      }}
-                      className={isCur ? "btn-primary btn-sm" : "btn-secondary btn-sm"}
-                      style={{
-                        fontSize: "0.8rem",
-                        padding: "4px 12px",
-                        borderRadius: "20px",
-                        fontWeight: 700,
-                        border: isCur ? "2px solid #2563eb" : "1px solid var(--border-light)",
-                        cursor: "pointer"
-                      }}
-                    >
-                      {isCur ? "✓ " : ""}{b.shortName || b.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           <div className="evm-lock-instructions">
             <p>
@@ -452,15 +411,15 @@ export const EVMPanel = ({ userSession }) => {
                   <div className="review-choice-col">
                     {cand ? (
                       <div className="review-selected-cand">
-                        <img 
+                        <img
                           src={
                             cand.avatarUrl &&
-                            cand.avatarUrl !== DEFAULT_AVATAR &&
-                            !cand.avatarUrl.startsWith("data:image/svg+xml")
+                              cand.avatarUrl !== DEFAULT_AVATAR &&
+                              !cand.avatarUrl.startsWith("data:image/svg+xml")
                               ? cand.avatarUrl
                               : candidatePhotos[cand.id] || DEFAULT_AVATAR
-                          } 
-                          alt={cand.name} 
+                          }
+                          alt={cand.name}
                           style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
                           onError={(e) => {
                             if (candidatePhotos[cand.id]) {
@@ -538,8 +497,8 @@ export const EVMPanel = ({ userSession }) => {
           </div>
 
           <div className="progress-track">
-            <div 
-              className="progress-fill" 
+            <div
+              className="progress-fill"
               style={{ width: `${((currentPosIndex + 1) / positions.length) * 100}%` }}
             />
           </div>
@@ -568,8 +527,8 @@ export const EVMPanel = ({ userSession }) => {
                   <img
                     src={
                       cand.avatarUrl &&
-                      cand.avatarUrl !== DEFAULT_AVATAR &&
-                      !cand.avatarUrl.startsWith("data:image/svg+xml")
+                        cand.avatarUrl !== DEFAULT_AVATAR &&
+                        !cand.avatarUrl.startsWith("data:image/svg+xml")
                         ? cand.avatarUrl
                         : candidatePhotos[cand.id] || DEFAULT_AVATAR
                     }
@@ -620,14 +579,14 @@ export const EVMPanel = ({ userSession }) => {
 
           {/* Empty candidates notification */}
           {currentPosCandidates.length === 0 && (
-            <div 
-              className="card-base text-center" 
-              style={{ 
-                gridColumn: "1 / -1", 
-                padding: "2rem 1.5rem", 
-                background: "rgba(255,255,255,0.03)", 
-                border: "1px dashed rgba(255,255,255,0.18)", 
-                borderRadius: "14px" 
+            <div
+              className="card-base text-center"
+              style={{
+                gridColumn: "1 / -1",
+                padding: "2rem 1.5rem",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px dashed rgba(255,255,255,0.18)",
+                borderRadius: "14px"
               }}
             >
               <h3 style={{ fontSize: "1.1rem", fontWeight: 600, color: "#94a3b8", marginBottom: "0.4rem" }}>
@@ -643,9 +602,8 @@ export const EVMPanel = ({ userSession }) => {
           {currentPos.allowNota !== false && (
             <div
               onClick={() => handleSelectCandidate(currentPos.id, "NOTA")}
-              className={`evm-candidate-tile evm-nota-tile card-base ${
-                selectedCandForPos === "NOTA" ? "cand-tile-selected" : ""
-              }`}
+              className={`evm-candidate-tile evm-nota-tile card-base ${selectedCandForPos === "NOTA" ? "cand-tile-selected" : ""
+                }`}
             >
               <div className="tile-profile-section">
                 <div className="nota-icon-box">🚫</div>
