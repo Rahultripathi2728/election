@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
   Search, 
   ShieldCheck, 
@@ -43,6 +43,11 @@ export const VerificationPanel = () => {
   const allBooths = (booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []))
     .filter((b) => !deletedBoothIds?.includes(b.id));
 
+  const activeOccupiedBooths = allBooths.filter(
+    (b) => (b.status === "UNLOCKED" || b.status === "SUBMITTING") && !!b.authorizedVoter
+  );
+
+  const searchInputRef = useRef(null);
   const [inputQuery, setInputQuery] = useState("");
   const [currentVerification, setCurrentVerification] = useState(null);
   const [feedbackMessage, setFeedbackMessage] = useState(null);
@@ -120,8 +125,12 @@ export const VerificationPanel = () => {
         type: "success",
         text: `Voter ${voter.name} (${voter.studentId}) dispatched to ${res.boothName || 'EVM Booth'}! Terminal is now UNLOCKED.`
       });
-      const updated = verifyStudent(voter.studentId);
-      setCurrentVerification(updated);
+      // Clear search query and active verification so officer can immediately search Student 2!
+      setInputQuery("");
+      setCurrentVerification(null);
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
     } else {
       setFeedbackMessage({
         type: "error",
@@ -374,12 +383,162 @@ export const VerificationPanel = () => {
         </div>
       </div>
 
-      {/* 2. COMPACT SEARCH BAR & QUICK CHIPS */}
+      {/* 2. ACTIVE STUDENTS IN VOTING BOOTHS SECTION */}
+      {activeOccupiedBooths.length > 0 && (
+        <div 
+          className="card-base fade-in" 
+          style={{ 
+            padding: "14px 18px", 
+            marginBottom: "12px", 
+            borderRadius: "12px",
+            border: "1.5px solid #10b981",
+            background: "linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)",
+            boxShadow: "0 4px 16px rgba(16, 185, 129, 0.12)"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ 
+                width: "10px", 
+                height: "10px", 
+                borderRadius: "50%", 
+                background: "#10b981", 
+                display: "inline-block",
+                boxShadow: "0 0 10px #10b981",
+                animation: "pulse 1.5s infinite"
+              }} />
+              <h3 style={{ margin: 0, fontSize: "0.98rem", fontWeight: 800, color: "var(--primary-navy)" }}>
+                Active Students Inside Voting Compartments ({activeOccupiedBooths.length})
+              </h3>
+              <span style={{ fontSize: "0.75rem", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "12px", fontWeight: 700 }}>
+                EVM Terminals Unlocked
+              </span>
+            </div>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+              Auto-removes as soon as ballot is recorded on EVM
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: activeOccupiedBooths.length > 1 ? "repeat(auto-fit, minmax(360px, 1fr))" : "1fr", gap: "10px" }}>
+            {activeOccupiedBooths.map((b) => {
+              const voter = b.authorizedVoter;
+              const isSub = b.status === "SUBMITTING";
+              return (
+                <div
+                  key={b.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    background: "#ffffff",
+                    border: isSub ? "1.5px solid #f59e0b" : "1.5px solid #86efac",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+                    gap: "12px"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{ position: "relative" }}>
+                      <img
+                        src={voter.photoUrl || DEFAULT_AVATAR}
+                        alt={voter.name}
+                        style={{
+                          width: "50px",
+                          height: "50px",
+                          borderRadius: "8px",
+                          objectFit: "cover",
+                          border: "1.5px solid #cbd5e1"
+                        }}
+                        onError={(e) => { e.target.src = DEFAULT_AVATAR; }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: "-4px",
+                          right: "-4px",
+                          width: "12px",
+                          height: "12px",
+                          borderRadius: "50%",
+                          background: isSub ? "#f59e0b" : "#10b981",
+                          border: "2px solid #ffffff"
+                        }}
+                        title={isSub ? "Recording Vote..." : "Voting in Progress"}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ 
+                          fontSize: "0.72rem", 
+                          fontWeight: 800, 
+                          padding: "2px 7px", 
+                          borderRadius: "4px", 
+                          background: isSub ? "#fffbeb" : "#ecfdf5", 
+                          color: isSub ? "#b45309" : "#047857",
+                          border: isSub ? "1px solid #fde68a" : "1px solid #a7f3d0"
+                        }}>
+                          {b.shortName || b.name}
+                        </span>
+                        <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--primary-navy)" }}>
+                          {voter.name}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "2px" }}>
+                        <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#2563eb" }}>
+                          ID: {voter.studentId}
+                        </span>
+                        <span style={{ margin: "0 4px" }}>•</span>
+                        <span>{voter.year}</span>
+                        <span style={{ margin: "0 4px" }}>•</span>
+                        <span>{voter.course || "B.Sc Nursing"}</span>
+                      </div>
+                      <div style={{ fontSize: "0.72rem", color: isSub ? "#d97706" : "#059669", fontWeight: 600, marginTop: "2px" }}>
+                        {isSub ? "⏳ Digital VVPAT recording ballot..." : "🟢 Currently casting ballot at terminal..."}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                    <button
+                      type="button"
+                      onClick={() => handleRelockBooth(b.id)}
+                      className="btn-secondary btn-sm"
+                      style={{
+                        color: "#dc2626",
+                        borderColor: "#fca5a5",
+                        background: "#fef2f2",
+                        fontSize: "0.75rem",
+                        padding: "5px 10px",
+                        borderRadius: "6px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px"
+                      }}
+                      title={`Revoke authorization and force lock ${b.shortName || b.name}`}
+                    >
+                      <RotateCcw size={12} />
+                      <span>Cancel / Reset</span>
+                    </button>
+                    <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
+                      {b.authorizedAt ? new Date(b.authorizedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "Active"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 3. COMPACT SEARCH BAR & QUICK CHIPS */}
       <div className="card-base" style={{ padding: "12px 16px", marginBottom: "12px", borderRadius: "10px" }}>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <div style={{ flex: 1, position: "relative" }}>
             <Search size={18} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Search Student Roll ID (e.g. 23961027) OR Student Name (e.g. Rahul Kumar)..."
               value={inputQuery}
@@ -576,38 +735,45 @@ export const VerificationPanel = () => {
             {currentVerification.status === "ELIGIBLE" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
                 {/* Auto-Assign Button (Enter Key) */}
-                <button
-                  onClick={() => handleAuthorize()}
-                  className="btn-success"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "10px",
-                    padding: "10px 16px",
-                    borderRadius: "10px",
-                    fontSize: "0.95rem",
-                    fontWeight: 800,
-                    boxShadow: "0 4px 14px rgba(16, 185, 129, 0.3)",
-                    cursor: "pointer"
-                  }}
-                  title="Auto-assigns to the first available free EVM booth"
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <Sparkles size={18} />
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15 }}>
-                      <span>AUTO-ASSIGN NEXT FREE BOOTH</span>
-                      <span style={{ fontSize: "0.7rem", opacity: 0.9, fontWeight: 500 }}>Press ENTER ↵ to auto-dispatch</span>
-                    </div>
-                  </div>
-                  <ArrowRight size={16} />
-                </button>
+                {(() => {
+                  const nextFree = allBooths.find((b) => b.status === "LOCKED");
+                  const hasFree = !!nextFree;
+                  return (
+                    <button
+                      onClick={() => handleAuthorize()}
+                      className="btn-success"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                        padding: "10px 16px",
+                        borderRadius: "10px",
+                        fontSize: "0.95rem",
+                        fontWeight: 800,
+                        boxShadow: "0 4px 14px rgba(16, 185, 129, 0.3)",
+                        cursor: "pointer"
+                      }}
+                      title={hasFree ? `Auto-assign to ${nextFree.shortName || nextFree.name}` : "All booths occupied. Select a booth to override."}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <Sparkles size={18} />
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15 }}>
+                          <span>{hasFree ? `AUTO-ASSIGN TO ${nextFree.shortName?.toUpperCase() || nextFree.name?.toUpperCase()}` : "AUTO-ASSIGN NEXT FREE BOOTH"}</span>
+                          <span style={{ fontSize: "0.7rem", opacity: 0.9, fontWeight: 500 }}>Press ENTER ↵ to auto-dispatch</span>
+                        </div>
+                      </div>
+                      <ArrowRight size={16} />
+                    </button>
+                  );
+                })()}
 
                 {/* Explicit Multi-Booth Dispatch Options */}
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                   <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700 }}>OR DISPATCH TO:</span>
                   {allBooths.map((b) => {
                     const isBusy = b.status === "UNLOCKED" || b.status === "SUBMITTING";
+                    const occupant = b.authorizedVoter?.name?.split(" ")[0];
                     return (
                       <button
                         key={b.id}
@@ -616,7 +782,7 @@ export const VerificationPanel = () => {
                         className="btn-secondary btn-sm"
                         style={{
                           fontSize: "0.75rem",
-                          padding: "4px 8px",
+                          padding: "5px 10px",
                           borderRadius: "6px",
                           fontWeight: 700,
                           borderColor: isBusy ? "#fcd34d" : "var(--border-light)",
@@ -628,7 +794,7 @@ export const VerificationPanel = () => {
                         <Unlock size={11} color={isBusy ? "#d97706" : "#10b981"} />
                         <span>{b.shortName || b.name}</span>
                         <span style={{ fontSize: "0.68rem", color: isBusy ? "#b45309" : "#059669", marginLeft: "2px" }}>
-                          ({isBusy ? "In-Use" : "Ready"})
+                          ({isBusy ? `In-Use: ${occupant}` : "Ready"})
                         </span>
                       </button>
                     );

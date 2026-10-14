@@ -117,6 +117,11 @@ export const ElectionProvider = ({ children }) => {
   const isInternalUpdateRef = useRef(false);
   const isCloudInitializedRef = useRef(false);
   const ballotsByYearRef = useRef({ year1: [], year2: [], year3: [], year4: [] });
+  const votersRef = useRef(voters);
+
+  useEffect(() => {
+    votersRef.current = voters;
+  }, [voters]);
 
   // Helper for immediate, modular cloud persistence
   const persistDirectToCloud = async (partialUpdates) => {
@@ -153,27 +158,45 @@ export const ElectionProvider = ({ children }) => {
     }
   };
 
-  // Safe Booth Merging: Protect active voting sessions and respect deleted booth tombstones
-  const mergeBoothsPreservingActive = (prevBooths = [], incomingBooths = [], isExplicitRevoke = false, deadIds = []) => {
+  // Safe Booth Merging: Protect active voting sessions, respect deleted booth tombstones, and allow genuine locks
+  const mergeBoothsPreservingActive = (prevBooths = [], incomingBooths = [], isExplicitRevoke = false, deadIds = [], revokedBoothId = null) => {
     const deadSet = new Set(deadIds);
     const rawIncoming = (Array.isArray(incomingBooths) && incomingBooths.length > 0 ? incomingBooths : initialBooths)
       .filter((b) => !deadSet.has(b.id));
 
-    if (isExplicitRevoke) {
+    if (isExplicitRevoke && !revokedBoothId) {
       return rawIncoming;
     }
 
     const prevMap = new Map((prevBooths || []).map((b) => [b.id, b]));
 
     return rawIncoming.map((inBooth) => {
+      // If this specific booth was explicitly revoked/locked, return incoming directly (which is LOCKED)
+      if (isExplicitRevoke && revokedBoothId && inBooth.id === revokedBoothId) {
+        return inBooth;
+      }
+
       const prevBooth = prevMap.get(inBooth.id);
-      // If locally this booth is UNLOCKED or SUBMITTING (student actively at terminal),
-      // DO NOT let a background sync clobber it to LOCKED unless explicit revocation was requested
       if (
         prevBooth &&
         (prevBooth.status === "UNLOCKED" || prevBooth.status === "SUBMITTING") &&
         inBooth.status === "LOCKED"
       ) {
+        // If the voter inside prevBooth has ALREADY VOTED, session has finished! Must accept the LOCKED state!
+        const voterId = prevBooth.authorizedVoter?.studentId;
+        const voterHasVoted = voterId && votersRef.current?.some(
+          (v) => v.studentId.toUpperCase() === voterId.toUpperCase() && v.hasVoted
+        );
+        if (voterHasVoted) {
+          return inBooth;
+        }
+
+        // If the authorization was granted over 5 minutes ago or session timed out, accept the LOCKED state
+        const authTime = new Date(prevBooth.authorizedAt || 0).getTime();
+        if (authTime > 0 && Date.now() - authTime > 300000) {
+          return inBooth;
+        }
+
         return prevBooth;
       }
       return inBooth;
@@ -209,14 +232,21 @@ export const ElectionProvider = ({ children }) => {
                 prevConfig?.booths,
                 payload.electionConfig.booths,
                 payload.isExplicitRevoke,
-                deadList
+                deadList,
+                payload.revokedBoothId
               );
 
               let activeBoothState = payload.electionConfig.boothState;
+              const prevVoterId = prevConfig?.boothState?.authorizedVoter?.studentId;
+              const prevHasVoted = prevVoterId && votersRef.current?.some(
+                (v) => v.studentId.toUpperCase() === prevVoterId.toUpperCase() && v.hasVoted
+              );
+
               if (
                 prevConfig?.boothState?.status === "UNLOCKED" &&
                 payload.electionConfig?.boothState?.status === "LOCKED" &&
-                !payload.isExplicitRevoke
+                !payload.isExplicitRevoke &&
+                !prevHasVoted
               ) {
                 activeBoothState = prevConfig.boothState;
               }
@@ -263,9 +293,14 @@ export const ElectionProvider = ({ children }) => {
                 deletedBoothIds
               );
               let activeBoothState = parsed.electionConfig.boothState;
+              const prevVoterId = prevConfig?.boothState?.authorizedVoter?.studentId;
+              const prevHasVoted = prevVoterId && votersRef.current?.some(
+                (v) => v.studentId.toUpperCase() === prevVoterId.toUpperCase() && v.hasVoted
+              );
               if (
                 prevConfig?.boothState?.status === "UNLOCKED" &&
-                parsed.electionConfig?.boothState?.status === "LOCKED"
+                parsed.electionConfig?.boothState?.status === "LOCKED" &&
+                !prevHasVoted
               ) {
                 activeBoothState = prevConfig.boothState;
               }
@@ -363,10 +398,16 @@ export const ElectionProvider = ({ children }) => {
                     false,
                     Array.from(deadSet)
                   );
+                  const prevVoterId = prev?.boothState?.authorizedVoter?.studentId;
+                  const prevHasVoted = prevVoterId && votersRef.current?.some(
+                    (v) => v.studentId.toUpperCase() === prevVoterId.toUpperCase() && v.hasVoted
+                  );
+                  const isUnlockedActive = prev?.boothState?.status === "UNLOCKED" && !prevHasVoted;
+
                   return {
                     ...incomingConfig,
                     booths: merged,
-                    boothState: prev?.boothState?.status === "UNLOCKED" ? prev.boothState : (incomingConfig.boothState || merged[0]),
+                    boothState: isUnlockedActive ? prev.boothState : (incomingConfig.boothState || merged[0]),
                     stationCredentials: incomingConfig.stationCredentials || prev?.stationCredentials || initialStationCredentials
                   };
                 });
@@ -523,10 +564,15 @@ export const ElectionProvider = ({ children }) => {
               ? { ...b, status: "LOCKED", authorizedVoter: null, authorizedAt: null, submittingAt: null }
               : b
           );
+          const activeBoothStillValid = healed.find((b) => b.id === prev?.boothState?.id);
+          const healedBoothState = (prev?.boothState?.status === "SUBMITTING")
+            ? { ...prev.boothState, status: "LOCKED", authorizedVoter: null, authorizedAt: null, submittingAt: null }
+            : (activeBoothStillValid || healed[0]);
+
           const lockedConfig = {
             ...prev,
             booths: healed,
-            boothState: healed[0]
+            boothState: healedBoothState
           };
           persistDirectToCloud({ electionConfig: lockedConfig });
           if (broadcastChannelRef.current) {
@@ -953,13 +999,17 @@ export const ElectionProvider = ({ children }) => {
         const lockedConfig = {
           ...prev,
           booths: reLockedBooths,
-          boothState: reLockedBooths[0]
+          boothState: reLockedBooths.find((b) => b.id === (prev?.boothState?.id || targetBooth.id)) || reLockedBooths[0]
         };
         persistDirectToCloud({ electionConfig: lockedConfig });
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.postMessage({
             type: "STATE_SYNC",
-            payload: { electionConfig: lockedConfig }
+            payload: { 
+              electionConfig: lockedConfig,
+              isExplicitRevoke: true,
+              revokedBoothId: targetBooth.id
+            }
           });
         }
         return lockedConfig;

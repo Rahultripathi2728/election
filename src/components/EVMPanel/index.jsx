@@ -23,7 +23,9 @@ export const EVMPanel = ({ userSession }) => {
   const { electionConfig, positions, candidates, castBallot, cancelBoothAuthorization, booths, initialBooths } = useElection();
 
   const allBooths = booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []);
-  const selectedBoothId = userSession?.boothId || localStorage.getItem("active_evm_booth_id") || "BOOTH-1";
+  const [selectedBoothId, setSelectedBoothId] = useState(() => {
+    return userSession?.boothId || localStorage.getItem("active_evm_booth_id") || "BOOTH-1";
+  });
 
   const activeBooth = allBooths.find((b) => b.id === selectedBoothId) || allBooths[0] || electionConfig.boothState || {};
   const isUnlocked = activeBooth.status === "UNLOCKED";
@@ -35,8 +37,8 @@ export const EVMPanel = ({ userSession }) => {
   const lastAuthorizedVoterIdRef = useRef(null);
 
   // EVM Internal flow:
-  // "WELCOME" -> "VOTING" -> "REVIEW" -> "SUCCESS"
-  const [evmStep, setEvmStep] = useState("WELCOME");
+  // "LOCKED" -> "WELCOME" -> "VOTING" -> "REVIEW" -> "SUCCESS"
+  const [evmStep, setEvmStep] = useState(isUnlocked ? "WELCOME" : "LOCKED");
   const [currentPosIndex, setCurrentPosIndex] = useState(0);
   const [ballotSelections, setBallotSelections] = useState({}); // { [positionId]: candidateId | 'NOTA' }
   const [countdown, setCountdown] = useState(electionConfig.autoLockDelaySeconds || 4);
@@ -80,14 +82,14 @@ export const EVMPanel = ({ userSession }) => {
   // Listen for explicit operator revoking of this booth
   useEffect(() => {
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-      const channel = new BroadcastChannel("paperless_election_sync_bus");
+      const channel = new BroadcastChannel("paperless_election_broadcast_live");
       const handleSync = (event) => {
         const { type, payload } = event.data;
         if (type === "STATE_SYNC" && payload?.isExplicitRevoke) {
           if (!payload.revokedBoothId || payload.revokedBoothId === activeBooth.id) {
             lastAuthorizedVoterIdRef.current = null;
             setSessionVoter(null);
-            setEvmStep("WELCOME");
+            setEvmStep("LOCKED");
             setBallotSelections({});
             setCurrentPosIndex(0);
           }
@@ -117,10 +119,13 @@ export const EVMPanel = ({ userSession }) => {
       // Never wipe voter or reset if the student is currently in the middle of VOTING or REVIEW
       lastAuthorizedVoterIdRef.current = null;
       setSessionVoter(null);
+      if (evmStep !== "LOCKED") {
+        setEvmStep("LOCKED");
+      }
     }
   }, [isUnlocked, authorizedVoter?.studentId, isSubmitting, evmStep]);
 
-  // CRITICAL FIX: Handle countdown when vote is submitted, auto-reset when finished
+  // CRITICAL FIX: Handle countdown when vote is submitted, auto-reset cleanly to LOCKED
   useEffect(() => {
     let timer = null;
     if (isSubmitting || evmStep === "SUCCESS") {
@@ -131,8 +136,8 @@ export const EVMPanel = ({ userSession }) => {
             clearInterval(timer);
             lastAuthorizedVoterIdRef.current = null;
             setSessionVoter(null);
-            // Reset EVM state back to standby welcome & clear selections
-            setEvmStep("WELCOME");
+            // Reset EVM state directly to LOCKED standby & clear selections
+            setEvmStep("LOCKED");
             setBallotSelections({});
             setCurrentPosIndex(0);
             if (isSubmitting) {
@@ -154,7 +159,7 @@ export const EVMPanel = ({ userSession }) => {
     if (!isUnlocked && !isSubmitting && evmStep === "SUCCESS") {
       lastAuthorizedVoterIdRef.current = null;
       setSessionVoter(null);
-      setEvmStep("WELCOME");
+      setEvmStep("LOCKED");
       setBallotSelections({});
       setCurrentPosIndex(0);
     }
@@ -221,6 +226,42 @@ export const EVMPanel = ({ userSession }) => {
           <div className="evm-booth-id">
             TERMINAL STATION: <strong>{activeBooth.name || activeBooth.shortName || activeBooth.id}</strong>
           </div>
+
+          {allBooths.length > 1 && (
+            <div style={{ marginTop: "10px", marginBottom: "6px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Switch Terminal Station:
+              </span>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center" }}>
+                {allBooths.map((b) => {
+                  const isCur = b.id === activeBooth.id;
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBoothId(b.id);
+                        try {
+                          localStorage.setItem("active_evm_booth_id", b.id);
+                        } catch (e) {}
+                      }}
+                      className={isCur ? "btn-primary btn-sm" : "btn-secondary btn-sm"}
+                      style={{
+                        fontSize: "0.8rem",
+                        padding: "4px 12px",
+                        borderRadius: "20px",
+                        fontWeight: 700,
+                        border: isCur ? "2px solid #2563eb" : "1px solid var(--border-light)",
+                        cursor: "pointer"
+                      }}
+                    >
+                      {isCur ? "✓ " : ""}{b.shortName || b.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="evm-lock-instructions">
             <p>
