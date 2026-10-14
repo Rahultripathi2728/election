@@ -48,8 +48,8 @@ export const Navbar = ({
         };
       case "evm":
         return {
-          title: "EVM Electronic Voting Terminal",
-          subtitle: "Terminal Alpha-01 (Isolated Booth)",
+          title: userSession?.boothName || userSession?.label || "EVM Electronic Voting Terminal",
+          subtitle: `Dedicated Booth Station (${userSession?.username || "booth"})`,
           icon: Vote,
           badgeClass: "badge-station-evm"
         };
@@ -155,8 +155,8 @@ export const Navbar = ({
             </div>
           )}
 
-          {/* Toggle Public Portal Preview Button */}
-          {onTogglePublicView && (
+          {/* Toggle Public Portal Preview Button (STRICTLY HIDDEN on EVM Terminal) */}
+          {onTogglePublicView && userSession?.role !== "evm" && (
             <button
               type="button"
               onClick={onTogglePublicView}

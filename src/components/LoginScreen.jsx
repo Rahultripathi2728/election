@@ -71,35 +71,47 @@ export const LoginScreen = ({ onLoginSuccess, isModal = false, onClose }) => {
       };
     }
 
-    // 3. EVM Voting Terminal (Supports "booth", "evm", or direct booth IDs "booth1", "booth2", "booth3")
-    const evmCred = activeCreds.evm || initialStationCredentials.evm;
-    const isBoothMatch = 
-      cleanUser === evmCred.username.toLowerCase() || 
-      cleanUser === "booth" || 
-      cleanUser === "evm" ||
-      cleanUser === "booth1" || cleanUser === "booth-1" ||
-      cleanUser === "booth2" || cleanUser === "booth-2" ||
-      cleanUser === "booth3" || cleanUser === "booth-3";
+    // 3. EVM Voting Terminal (Dynamic match against individual configured booths)
+    const allConfiguredBooths = electionConfig?.booths && Array.isArray(electionConfig.booths) && electionConfig.booths.length > 0
+      ? electionConfig.booths
+      : initialBooths;
 
-    if (!authenticatedStation && isBoothMatch && cleanPass === evmCred.passcode) {
-      if (cleanUser === "booth1" || cleanUser === "booth-1") {
-        try { localStorage.setItem("active_evm_booth_id", "BOOTH-1"); } catch(e) {}
-      } else if (cleanUser === "booth2" || cleanUser === "booth-2") {
-        try { localStorage.setItem("active_evm_booth_id", "BOOTH-2"); } catch(e) {}
-      } else if (cleanUser === "booth3" || cleanUser === "booth-3") {
-        try { localStorage.setItem("active_evm_booth_id", "BOOTH-3"); } catch(e) {}
-      }
+    const matchedBooth = allConfiguredBooths.find((b) => {
+      const bUser = (b.username || "").toLowerCase();
+      const bPass = b.passcode || activeCreds.evm?.passcode || "booth123";
+      const isUserMatch = 
+        cleanUser === bUser || 
+        cleanUser === b.id.toLowerCase() || 
+        cleanUser === (b.shortName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return isUserMatch && cleanPass === bPass;
+    });
 
-      const assignedBoothLabel = 
-        cleanUser.includes("1") ? "EVM Terminal 01 (Booth #1)" :
-        cleanUser.includes("2") ? "EVM Terminal 02 (Booth #2)" :
-        cleanUser.includes("3") ? "EVM Terminal 03 (Booth #3)" :
-        "EVM Voting Terminal";
+    if (!authenticatedStation && matchedBooth) {
+      try {
+        localStorage.setItem("active_evm_booth_id", matchedBooth.id);
+      } catch (e) {}
 
       authenticatedStation = {
         role: "evm",
-        username: evmCred.username,
-        label: assignedBoothLabel
+        username: matchedBooth.username || cleanUser,
+        boothId: matchedBooth.id,
+        boothName: matchedBooth.name || matchedBooth.shortName,
+        label: `${matchedBooth.name || matchedBooth.shortName}`
+      };
+    }
+
+    // Fallback for generic "booth" or "evm" username
+    if (!authenticatedStation && (cleanUser === "booth" || cleanUser === "evm") && cleanPass === (activeCreds.evm?.passcode || "booth123")) {
+      const defaultBooth = allConfiguredBooths[0] || initialBooths[0];
+      try {
+        localStorage.setItem("active_evm_booth_id", defaultBooth.id);
+      } catch (e) {}
+      authenticatedStation = {
+        role: "evm",
+        username: "booth",
+        boothId: defaultBooth.id,
+        boothName: defaultBooth.name,
+        label: defaultBooth.name
       };
     }
 

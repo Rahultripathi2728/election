@@ -32,8 +32,10 @@ export const initialStationCredentials = {
 export const initialBooths = [
   {
     id: "BOOTH-1",
-    name: "EVM Terminal 01 (Alpha)",
+    name: "EVM Terminal 01 (Booth #1)",
     shortName: "Booth #1",
+    username: "booth1",
+    passcode: "booth123",
     status: "LOCKED", // "LOCKED" | "UNLOCKED" | "SUBMITTING"
     authorizedVoter: null,
     authorizedAt: null,
@@ -41,8 +43,10 @@ export const initialBooths = [
   },
   {
     id: "BOOTH-2",
-    name: "EVM Terminal 02 (Beta)",
+    name: "EVM Terminal 02 (Booth #2)",
     shortName: "Booth #2",
+    username: "booth2",
+    passcode: "booth123",
     status: "LOCKED",
     authorizedVoter: null,
     authorizedAt: null,
@@ -50,8 +54,10 @@ export const initialBooths = [
   },
   {
     id: "BOOTH-3",
-    name: "EVM Terminal 03 (Gamma)",
+    name: "EVM Terminal 03 (Booth #3)",
     shortName: "Booth #3",
+    username: "booth3",
+    passcode: "booth123",
     status: "LOCKED",
     authorizedVoter: null,
     authorizedAt: null,
@@ -72,6 +78,8 @@ export const initialElectionConfig = {
   electionStage: "LIVE_POLL", // "PRE_POLL" | "LIVE_POLL" | "CONCLUDED"
   activeBulletin: null,
   publishedBulletins: [],
+  publishedResults: null,
+  resultsUpdateInterval: "15",
   allowNota: true,
   autoLockDelaySeconds: 4,
   booths: initialBooths,

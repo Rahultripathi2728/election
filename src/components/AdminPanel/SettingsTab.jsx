@@ -26,11 +26,15 @@ import {
   Megaphone,
   Trash2,
   Send,
-  Sparkles
+  Sparkles,
+  Plus,
+  Terminal,
+  Activity,
+  Check
 } from "lucide-react";
 import { useElection } from "../../context/ElectionContext";
 import { Modal } from "../common/Modal";
-import { initialStationCredentials } from "../../data/initialData";
+import { initialStationCredentials, initialBooths } from "../../data/initialData";
 
 export const SettingsTab = ({ onOpenFirebaseModal }) => {
   const { 
@@ -40,12 +44,18 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
     setElectionStage,
     publishBulletin,
     clearBulletin,
+    publishResultsTally,
     resetAllVotes,
     reseedCompleteDatabase,
     forcePushToFirestore,
     firebaseStatus,
     voters,
     ballots,
+    booths,
+    addBooth,
+    updateBooth,
+    deleteBooth,
+    resetBooth,
     updateStationCredentials
   } = useElection();
 
@@ -58,6 +68,22 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
   const [showReseedConfirm, setShowReseedConfirm] = useState(false);
   const [reseedCheckbox, setReseedCheckbox] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState(null);
+
+  // Multi-Booth Management State
+  const allBooths = booths && Array.isArray(booths) && booths.length > 0 ? booths : (electionConfig?.booths || initialBooths);
+  const [showAddBoothModal, setShowAddBoothModal] = useState(false);
+  const [newBoothName, setNewBoothName] = useState(`EVM Terminal 0${allBooths.length + 1} (Booth #${allBooths.length + 1})`);
+  const [newBoothShortName, setNewBoothShortName] = useState(`Booth #${allBooths.length + 1}`);
+  const [newBoothUsername, setNewBoothUsername] = useState(`booth${allBooths.length + 1}`);
+  const [newBoothPasscode, setNewBoothPasscode] = useState("booth123");
+  const [showBoothPasswords, setShowBoothPasswords] = useState({});
+  const [editingBoothCreds, setEditingBoothCreds] = useState({});
+  const [boothFeedback, setBoothFeedback] = useState(null);
+
+  // Results Publication Schedule State
+  const [resultsInterval, setResultsInterval] = useState(electionConfig?.resultsUpdateInterval || "15 minutes");
+  const [customInterval, setCustomInterval] = useState("");
+  const [resultsPublishFeedback, setResultsPublishFeedback] = useState(null);
 
   // Public Portal Stage & Periodic Bulletin State
   const currentStage = electionConfig?.electionStage || "LIVE_POLL";
@@ -114,6 +140,64 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
     clearBulletin();
     setBulletinFeedback({ type: "success", text: "Active bulletin removed from Public Portal." });
     setTimeout(() => setBulletinFeedback(null), 3000);
+  };
+
+  const handlePublishResults = (isFinal = false) => {
+    const notice = customInterval.trim() || resultsInterval || "15 minutes";
+    const res = publishResultsTally({ nextUpdateNotice: notice, isFinal });
+    if (res.success) {
+      setResultsPublishFeedback({
+        type: "success",
+        text: isFinal 
+          ? "🏆 Final Certified Results successfully published to Public Portal with declared Winners!"
+          : `Official Live Results tally successfully published! (Next update scheduled: ${notice})`
+      });
+      setTimeout(() => setResultsPublishFeedback(null), 4000);
+    }
+  };
+
+  const handleCreateBooth = (e) => {
+    e.preventDefault();
+    if (!newBoothName.trim() || !newBoothUsername.trim() || !newBoothPasscode.trim()) {
+      setBoothFeedback({ type: "error", text: "All booth fields are required." });
+      return;
+    }
+    const res = addBooth({
+      name: newBoothName.trim(),
+      shortName: newBoothShortName.trim(),
+      username: newBoothUsername.trim(),
+      passcode: newBoothPasscode.trim()
+    });
+    if (res.success) {
+      setShowAddBoothModal(false);
+      const nextNum = allBooths.length + 2;
+      setNewBoothName(`EVM Terminal 0${nextNum} (Booth #${nextNum})`);
+      setNewBoothShortName(`Booth #${nextNum}`);
+      setNewBoothUsername(`booth${nextNum}`);
+      setNewBoothPasscode("booth123");
+      setBoothFeedback({ type: "success", text: `Successfully provisioned ${newBoothShortName.trim()}!` });
+      setTimeout(() => setBoothFeedback(null), 3500);
+    }
+  };
+
+  const handleSaveBoothEdits = (boothId) => {
+    const creds = editingBoothCreds[boothId];
+    if (!creds) return;
+    updateBooth(boothId, creds);
+    setBoothFeedback({ type: "success", text: "Booth station credentials updated and synced to cloud!" });
+    setTimeout(() => setBoothFeedback(null), 3000);
+  };
+
+  const handleDeleteBooth = (boothId, boothName) => {
+    if (window.confirm(`Are you sure you want to delete ${boothName}?`)) {
+      const res = deleteBooth(boothId);
+      if (!res.success) {
+        setBoothFeedback({ type: "error", text: res.message });
+      } else {
+        setBoothFeedback({ type: "success", text: `${boothName} removed successfully.` });
+      }
+      setTimeout(() => setBoothFeedback(null), 3000);
+    }
   };
 
   // Station Passwords Management State
@@ -502,6 +586,290 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
               </button>
             </div>
           </form>
+        </div>
+
+        {/* 3. PUBLIC LIVE RESULTS PUBLISHER & UPDATE SCHEDULE */}
+        <div className="settings-card card-base settings-card-wide" style={{ border: "2px solid rgba(139, 92, 246, 0.35)", background: "linear-gradient(180deg, rgba(139, 92, 246, 0.04) 0%, rgba(15, 23, 42, 0.3) 100%)" }}>
+          <div className="settings-card-header">
+            <div className="flex-row items-center gap-2">
+              <BarChart3 size={22} color="#8b5cf6" />
+              <div>
+                <h3>Public Live Results Publisher & Tally Schedule</h3>
+                <p className="text-muted text-xs">Publish current vote counts to the Public Results tab. Visitors will see interim tallies, lead margins, and the countdown to the next scheduled update.</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span className={`badge ${electionConfig?.publishedResults ? "badge-success" : "badge-blue"}`}>
+                {electionConfig?.publishedResults 
+                  ? `Last Published: ${electionConfig.publishedResults.publishedAt}` 
+                  : "Results Not Yet Published"}
+              </span>
+            </div>
+          </div>
+
+          {resultsPublishFeedback && (
+            <div className={`alert-box mb-3 ${resultsPublishFeedback.type === "success" ? "alert-success" : "alert-error"}`}>
+              {resultsPublishFeedback.type === "success" ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+              <span>{resultsPublishFeedback.text}</span>
+            </div>
+          )}
+
+          {/* Current Published Results Overview */}
+          {electionConfig?.publishedResults ? (
+            <div style={{
+              padding: "12px 18px",
+              borderRadius: "12px",
+              background: "rgba(139, 92, 246, 0.1)",
+              border: "1px solid rgba(139, 92, 246, 0.3)",
+              marginBottom: "16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px"
+            }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <span style={{ background: "#7c3aed", color: "#ffffff", padding: "2px 8px", borderRadius: "12px", fontSize: "0.72rem", fontWeight: 800 }}>
+                    CHECKPOINT LIVE • {electionConfig.publishedResults.publishedAt}
+                  </span>
+                  <span style={{ background: "rgba(16, 185, 129, 0.2)", color: "#10b981", padding: "2px 8px", borderRadius: "12px", fontSize: "0.72rem", fontWeight: 700 }}>
+                    Turnout: {electionConfig.publishedResults.turnoutPercent}% ({electionConfig.publishedResults.totalVotesRecorded} ballots recorded)
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.85rem", color: "#cbd5e1" }}>
+                  Notice displayed on Public Screen: <strong>"Next official update in ~{electionConfig.publishedResults.nextUpdateNotice}"</strong>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handlePublishResults(false)}
+                className="btn-primary"
+                style={{ background: "#7c3aed", borderColor: "#7c3aed", padding: "8px 16px", fontSize: "0.82rem" }}
+              >
+                <RefreshCw size={14} /> Refresh / Re-Publish Current Votes Now
+              </button>
+            </div>
+          ) : (
+            <div style={{
+              padding: "12px 16px",
+              borderRadius: "10px",
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px dashed var(--border-light)",
+              marginBottom: "16px",
+              color: "#94a3b8",
+              fontSize: "0.85rem"
+            }}>
+              ℹ️ Public Results tab is currently in pre-poll holding. When you click <strong>"Publish Live Results Now"</strong>, the current vote tallies and leader standings will become visible to viewers on the Public Results tab.
+            </div>
+          )}
+
+          {/* Controls for Schedule Interval and Publishing */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px", marginTop: "8px" }}>
+            <div className="form-group mb-0">
+              <label className="text-xs font-semibold text-muted">Next Scheduled Update Interval (Shown to Public)</label>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
+                {["10 minutes", "15 minutes", "20 minutes", "30 minutes"].map((interval) => (
+                  <button
+                    key={interval}
+                    type="button"
+                    onClick={() => {
+                      setResultsInterval(interval);
+                      setCustomInterval("");
+                    }}
+                    className="btn-secondary"
+                    style={{
+                      padding: "6px 12px",
+                      fontSize: "0.78rem",
+                      borderRadius: "8px",
+                      background: (resultsInterval === interval && !customInterval) ? "#7c3aed" : undefined,
+                      color: (resultsInterval === interval && !customInterval) ? "#ffffff" : undefined
+                    }}
+                  >
+                    {interval}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                placeholder="Or custom notice (e.g. at 2:00 PM / Final Round)"
+                value={customInterval}
+                onChange={(e) => setCustomInterval(e.target.value)}
+                className="form-input form-input-sm"
+                style={{ marginTop: "8px" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={() => handlePublishResults(false)}
+                className="btn-primary"
+                style={{ background: "#7c3aed", borderColor: "#7c3aed", padding: "10px 18px", fontWeight: 700 }}
+              >
+                <BarChart3 size={16} /> 📢 Publish Live Results Tally Now ({votedCount} votes)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Declare FINAL certified results? This will conclude the election and officially crown the winners on the Public Home screen.")) {
+                    handlePublishResults(true);
+                    setElectionStage("CONCLUDED");
+                  }
+                }}
+                className="btn-secondary"
+                style={{ padding: "8px 16px", fontWeight: 700, borderColor: "#d97706", color: "#f59e0b" }}
+              >
+                <Award size={16} color="#f59e0b" /> Certify & Declare Final Winners
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. EVM VOTING BOOTHS & TERMINALS MANAGEMENT */}
+        <div className="settings-card card-base settings-card-wide" style={{ border: "2px solid rgba(217, 119, 6, 0.35)", background: "linear-gradient(180deg, rgba(217, 119, 6, 0.03) 0%, rgba(15, 23, 42, 0.3) 100%)" }}>
+          <div className="settings-card-header">
+            <div className="flex-row items-center gap-2">
+              <Vote size={22} color="#d97706" />
+              <div>
+                <h3>EVM Voting Booths & Terminal Stations Management</h3>
+                <p className="text-muted text-xs">Manage multi-terminal voting booths. Each device logs in with its own dedicated booth credentials, permanently locking it to that booth.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const nextNum = allBooths.length + 1;
+                setNewBoothName(`EVM Terminal 0${nextNum} (Booth #${nextNum})`);
+                setNewBoothShortName(`Booth #${nextNum}`);
+                setNewBoothUsername(`booth${nextNum}`);
+                setNewBoothPasscode("booth123");
+                setShowAddBoothModal(true);
+              }}
+              className="btn-primary"
+              style={{ background: "#d97706", borderColor: "#d97706", fontSize: "0.82rem", padding: "6px 14px" }}
+            >
+              <Plus size={15} /> Provision New Booth
+            </button>
+          </div>
+
+          {boothFeedback && (
+            <div className={`alert-box mb-3 ${boothFeedback.type === "success" ? "alert-success" : "alert-error"}`}>
+              {boothFeedback.type === "success" ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+              <span>{boothFeedback.text}</span>
+            </div>
+          )}
+
+          {/* Booths Cards Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))", gap: "14px", marginTop: "12px" }}>
+            {allBooths.map((b, idx) => {
+              const edits = editingBoothCreds[b.id] || {
+                username: b.username || `booth${idx + 1}`,
+                passcode: b.passcode || "booth123",
+                name: b.name || `EVM Terminal 0${idx + 1}`
+              };
+              const isPasswordVisible = showBoothPasswords[b.id];
+
+              return (
+                <div key={b.id} className="card-base" style={{ padding: "14px 16px", borderRadius: "12px", border: "1px solid var(--border-light)", background: "rgba(255,255,255,0.03)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(217, 119, 6, 0.15)", color: "#d97706", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900 }}>
+                        {idx + 1}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: "0.92rem", color: "#e2e8f0" }}>{b.shortName || b.name}</div>
+                        <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>ID: <span className="font-mono">{b.id}</span></div>
+                      </div>
+                    </div>
+                    <span className={`badge ${b.status === "UNLOCKED" ? "badge-success" : b.status === "SUBMITTING" ? "badge-warning" : "badge-blue"}`} style={{ fontSize: "0.7rem" }}>
+                      {b.status}
+                    </span>
+                  </div>
+
+                  <div className="form-group mb-2">
+                    <label className="text-xs font-semibold text-muted">Station Login ID</label>
+                    <input
+                      type="text"
+                      value={edits.username}
+                      onChange={(e) => setEditingBoothCreds({
+                        ...editingBoothCreds,
+                        [b.id]: { ...edits, username: e.target.value.toLowerCase().trim() }
+                      })}
+                      className="form-input form-input-sm"
+                      placeholder="e.g. booth1"
+                    />
+                  </div>
+
+                  <div className="form-group mb-3">
+                    <label className="text-xs font-semibold text-muted">Security Passcode</label>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type={isPasswordVisible ? "text" : "password"}
+                        value={edits.passcode}
+                        onChange={(e) => setEditingBoothCreds({
+                          ...editingBoothCreds,
+                          [b.id]: { ...edits, passcode: e.target.value.trim() }
+                        })}
+                        className="form-input form-input-sm"
+                        placeholder="booth password..."
+                        style={{ paddingRight: "36px" }}
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowBoothPasswords({
+                          ...showBoothPasswords,
+                          [b.id]: !isPasswordVisible
+                        })}
+                        title={isPasswordVisible ? "Hide password" : "Show password"}
+                      >
+                        {isPasswordVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", paddingTop: "8px", borderTop: "1px solid var(--border-light)" }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveBoothEdits(b.id)}
+                      className="btn-secondary"
+                      style={{ fontSize: "0.76rem", padding: "5px 10px" }}
+                      title="Save and synchronize changes to this booth"
+                    >
+                      <Save size={13} /> Save Creds
+                    </button>
+
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        type="button"
+                        onClick={() => resetBooth(b.id)}
+                        className="btn-secondary"
+                        style={{ fontSize: "0.76rem", padding: "5px 10px" }}
+                        title="Force lock booth to standby"
+                      >
+                        <Lock size={13} /> Lock
+                      </button>
+
+                      {allBooths.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBooth(b.id, b.shortName || b.name)}
+                          className="btn-danger"
+                          style={{ fontSize: "0.76rem", padding: "5px 10px" }}
+                          title="Delete this EVM booth"
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Election Status Lifecycle Card */}
@@ -1095,6 +1463,95 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
             Restore & Sync Database
           </button>
         </div>
+      </Modal>
+
+      {/* Modal: Provision New EVM Booth */}
+      <Modal
+        isOpen={showAddBoothModal}
+        onClose={() => setShowAddBoothModal(false)}
+        size="md"
+      >
+        <div className="modal-header">
+          <div className="modal-title-wrap">
+            <div className="modal-icon-badge">
+              <Plus size={22} color="#d97706" />
+            </div>
+            <div>
+              <h3>Provision New EVM Terminal Booth</h3>
+              <p>Add an additional physical voting terminal to your election</p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleCreateBooth}>
+          <div className="modal-body-pad">
+            <div className="form-group mb-3">
+              <label>Official Terminal Name</label>
+              <input
+                type="text"
+                required
+                value={newBoothName}
+                onChange={(e) => setNewBoothName(e.target.value)}
+                className="form-input"
+                placeholder="e.g. EVM Terminal 04 (Booth #4)"
+              />
+            </div>
+
+            <div className="form-group mb-3">
+              <label>Short Badge Name</label>
+              <input
+                type="text"
+                required
+                value={newBoothShortName}
+                onChange={(e) => setNewBoothShortName(e.target.value)}
+                className="form-input"
+                placeholder="e.g. Booth #4"
+              />
+            </div>
+
+            <div className="form-group mb-3">
+              <label>Station Login ID (Username)</label>
+              <input
+                type="text"
+                required
+                value={newBoothUsername}
+                onChange={(e) => setNewBoothUsername(e.target.value.toLowerCase().trim())}
+                className="form-input"
+                placeholder="e.g. booth4"
+              />
+              <span className="text-muted text-xs">This physical terminal will enter this ID on the login screen.</span>
+            </div>
+
+            <div className="form-group mb-3">
+              <label>Security Passcode</label>
+              <input
+                type="text"
+                required
+                value={newBoothPasscode}
+                onChange={(e) => setNewBoothPasscode(e.target.value.trim())}
+                className="form-input"
+                placeholder="e.g. booth123"
+              />
+            </div>
+          </div>
+
+          <div className="modal-footer">
+            <button
+              type="button"
+              onClick={() => setShowAddBoothModal(false)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              style={{ background: "#d97706", borderColor: "#d97706" }}
+            >
+              Provision Booth Terminal
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

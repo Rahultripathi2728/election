@@ -45,7 +45,14 @@ const MainApp = () => {
   });
 
   const [showFirebaseModal, setShowFirebaseModal] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(() => {
+    try {
+      const url = new URL(window.location.href);
+      return url.searchParams.get("login") === "true";
+    } catch (e) {
+      return false;
+    }
+  });
   const [viewingPublicView, setViewingPublicView] = useState(false);
 
   // Global Fullscreen Manager: Works across ALL dashboards via [F] and long-press [ESC]
@@ -169,7 +176,7 @@ const MainApp = () => {
               <AdminPanel onOpenFirebaseModal={() => setShowFirebaseModal(true)} />
             )}
             {userSession.role === "verify" && <VerificationPanel />}
-            {userSession.role === "evm" && <EVMPanel />}
+            {userSession.role === "evm" && <EVMPanel userSession={userSession} />}
             {userSession.role === "live" && <LiveResultsPanel />}
           </>
         )}

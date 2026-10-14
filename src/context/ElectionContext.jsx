@@ -69,18 +69,22 @@ export const ElectionProvider = ({ children }) => {
   const [candidates, setCandidates] = useState(() => {
     const tombstone = getInitialState("deletedCandidateIds", []);
     const raw = getInitialState("candidates", initialCandidates);
+    const seqTracker = {};
     if (Array.isArray(raw)) {
       return raw
         .filter((c) => !tombstone.includes(c.id))
-        .map((c) => {
-          if (!c.avatarUrl || c.avatarUrl === DEFAULT_AVATAR || c.avatarUrl.startsWith("data:image/svg+xml")) {
+        .map((c, idx) => {
+          if (!seqTracker[c.positionId]) seqTracker[c.positionId] = 1;
+          const seq = typeof c.sequence === "number" ? c.sequence : seqTracker[c.positionId]++;
+          let avatar = c.avatarUrl;
+          if (!avatar || avatar === DEFAULT_AVATAR || avatar.startsWith("data:image/svg+xml")) {
             const realPhoto = candidatePhotos[c.id];
-            if (realPhoto) return { ...c, avatarUrl: realPhoto };
+            if (realPhoto) avatar = realPhoto;
           }
-          return c;
+          return { ...c, sequence: seq, avatarUrl: avatar || DEFAULT_AVATAR };
         });
     }
-    return initialCandidates.filter((c) => !tombstone.includes(c.id));
+    return initialCandidates.filter((c) => !tombstone.includes(c.id)).map((c, idx) => ({ ...c, sequence: idx + 1 }));
   });
   const [voters, setVoters] = useState(() => getInitialState("voters", initialVoters));
   const [ballots, setBallots] = useState(() => getInitialState("ballots", initialBallots));
@@ -925,9 +929,14 @@ export const ElectionProvider = ({ children }) => {
 
   // 4. Admin Candidate Management
   const addCandidate = (candData) => {
+    const postCandidates = candidates.filter((c) => c.positionId === candData.positionId);
+    const nextSeq = postCandidates.length > 0 
+      ? Math.max(...postCandidates.map((c) => (typeof c.sequence === "number" ? c.sequence : 0))) + 1 
+      : 1;
     const newCand = {
       id: `cand_${Date.now()}`,
       votes: 0,
+      sequence: nextSeq,
       manifesto: "",
       symbolIcon: "",
       symbolName: "",
@@ -955,6 +964,61 @@ export const ElectionProvider = ({ children }) => {
     setDeletedCandidateIds(nextDeletedIds);
     appendLog("CANDIDATE_DELETED", "Admin", `Removed nominee: ${cand?.name || id}`);
     persistDirectToCloud({ candidates: nextCandidates, deletedCandidateIds: nextDeletedIds });
+  };
+
+  const moveCandidateSequence = (candidateId, direction) => {
+    const cand = candidates.find((c) => c.id === candidateId);
+    if (!cand) return;
+
+    // Get all candidates for the same post, sorted by sequence or original array order
+    const postCandidates = candidates
+      .filter((c) => c.positionId === cand.positionId)
+      .map((c, i) => ({ ...c, sequence: typeof c.sequence === "number" ? c.sequence : i + 1 }))
+      .sort((a, b) => a.sequence - b.sequence);
+
+    const index = postCandidates.findIndex((c) => c.id === candidateId);
+    if (index === -1) return;
+
+    let targetIndex = -1;
+    if (direction === "UP" && index > 0) {
+      targetIndex = index - 1;
+    } else if (direction === "DOWN" && index < postCandidates.length - 1) {
+      targetIndex = index + 1;
+    }
+
+    if (targetIndex !== -1) {
+      const currentItem = postCandidates[index];
+      const targetItem = postCandidates[targetIndex];
+
+      const tempSeq = currentItem.sequence;
+      currentItem.sequence = targetItem.sequence;
+      targetItem.sequence = tempSeq;
+
+      // In case both had the same sequence number, ensure distinct ordering
+      if (currentItem.sequence === targetItem.sequence) {
+        if (direction === "UP") {
+          currentItem.sequence = Math.max(1, targetItem.sequence - 1);
+        } else {
+          currentItem.sequence = targetItem.sequence + 1;
+        }
+      }
+
+      const seqMap = {
+        [currentItem.id]: currentItem.sequence,
+        [targetItem.id]: targetItem.sequence
+      };
+
+      const nextCandidates = candidates.map((c) => {
+        if (seqMap[c.id] !== undefined) {
+          return { ...c, sequence: seqMap[c.id] };
+        }
+        return c;
+      });
+
+      setCandidates(nextCandidates);
+      appendLog("CANDIDATES_REORDERED", "Admin", `Changed ballot sequence for candidate: ${cand.name}`);
+      persistDirectToCloud({ candidates: nextCandidates });
+    }
   };
 
   // 5. Voter Roll Management
@@ -1219,7 +1283,132 @@ export const ElectionProvider = ({ children }) => {
     appendLog("BULLETIN_CLEARED", "Admin", `Removed active public bulletin.`);
   };
 
-  // 10. Update Station Security Passwords (Production Hardening)
+  // 10. EVM Booths Management (Admin Terminal Provisioning)
+  const addBooth = (boothData) => {
+    const currentBooths = electionConfig?.booths || initialBooths;
+    const nextNumber = currentBooths.length + 1;
+    const newBooth = {
+      id: `BOOTH-${Date.now()}`,
+      name: boothData.name?.trim() || `EVM Terminal 0${nextNumber} (Booth #${nextNumber})`,
+      shortName: boothData.shortName?.trim() || `Booth #${nextNumber}`,
+      username: (boothData.username || `booth${nextNumber}`).trim().toLowerCase(),
+      passcode: (boothData.passcode || "booth123").trim(),
+      status: "LOCKED",
+      authorizedVoter: null,
+      authorizedAt: null,
+      submittingAt: null
+    };
+
+    const nextBooths = [...currentBooths, newBooth];
+    const updated = {
+      ...electionConfig,
+      booths: nextBooths
+    };
+    setElectionConfig(updated);
+    persistDirectToCloud({ electionConfig: updated });
+    appendLog("BOOTH_CREATED", "Admin", `Added EVM booth: ${newBooth.shortName}`);
+    return { success: true, booth: newBooth };
+  };
+
+  const updateBooth = (id, updates) => {
+    const currentBooths = electionConfig?.booths || initialBooths;
+    const nextBooths = currentBooths.map((b) => (b.id === id ? { ...b, ...updates } : b));
+    const updated = {
+      ...electionConfig,
+      booths: nextBooths
+    };
+    setElectionConfig(updated);
+    persistDirectToCloud({ electionConfig: updated });
+    appendLog("BOOTH_UPDATED", "Admin", `Updated EVM booth details for ID: ${id}`);
+    return { success: true };
+  };
+
+  const deleteBooth = (id) => {
+    const currentBooths = electionConfig?.booths || initialBooths;
+    if (currentBooths.length <= 1) {
+      return { success: false, message: "At least one EVM booth must remain active." };
+    }
+    const nextBooths = currentBooths.filter((b) => b.id !== id);
+    const updated = {
+      ...electionConfig,
+      booths: nextBooths,
+      boothState: nextBooths[0]
+    };
+    setElectionConfig(updated);
+    persistDirectToCloud({ electionConfig: updated });
+    appendLog("BOOTH_DELETED", "Admin", `Removed EVM booth ID: ${id}`);
+    return { success: true };
+  };
+
+  const resetBooth = (id) => {
+    const currentBooths = electionConfig?.booths || initialBooths;
+    const nextBooths = currentBooths.map((b) => {
+      if (b.id === id) {
+        return {
+          ...b,
+          status: "LOCKED",
+          authorizedVoter: null,
+          authorizedAt: null,
+          submittingAt: null
+        };
+      }
+      return b;
+    });
+    const updated = {
+      ...electionConfig,
+      booths: nextBooths
+    };
+    setElectionConfig(updated);
+    persistDirectToCloud({ electionConfig: updated });
+    appendLog("BOOTH_RESET", "Admin", `Reset and locked EVM booth ID: ${id}`);
+    return { success: true };
+  };
+
+  // 11. Public Results Publication with Scheduled Next-Update Interval
+  const publishResultsTally = ({ nextUpdateNotice = "15 minutes", isFinal = false } = {}) => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const totalVotersCount = voters.length;
+    const votedCount = voters.filter((v) => v.hasVoted).length;
+    const turnoutPct = totalVotersCount > 0 ? ((votedCount / totalVotersCount) * 100).toFixed(1) : 0;
+
+    const tallies = candidates.map((c) => ({
+      id: c.id,
+      positionId: c.positionId,
+      name: c.name,
+      votes: c.votes || 0,
+      rollNo: c.rollNo,
+      avatarUrl: c.avatarUrl,
+      sequence: c.sequence || 0
+    }));
+
+    const resultSnapshot = {
+      publishedAt: timeStr,
+      timestamp: Date.now(),
+      nextUpdateNotice: nextUpdateNotice || "15 minutes",
+      totalVotesRecorded: votedCount,
+      turnoutPercent: turnoutPct,
+      isFinal: isFinal,
+      tallies
+    };
+
+    setElectionConfig((prev) => {
+      const updated = {
+        ...prev,
+        publishedResults: resultSnapshot,
+        resultsUpdateInterval: nextUpdateNotice || prev.resultsUpdateInterval || "15",
+        status: isFinal ? "CONCLUDED" : prev.status,
+        electionStage: isFinal ? "CONCLUDED" : prev.electionStage
+      };
+      persistDirectToCloud({ electionConfig: updated });
+      return updated;
+    });
+
+    appendLog("RESULTS_PUBLISHED", "Admin", `Published public results tally at ${timeStr} (Next in ${nextUpdateNotice})`);
+    return { success: true, resultSnapshot };
+  };
+
+  // 12. Update Station Security Passwords (Production Hardening)
   const updateStationCredentials = (newCredentials) => {
     const updated = {
       ...electionConfig,
@@ -1247,6 +1436,10 @@ export const ElectionProvider = ({ children }) => {
     initialBooths,
     initialStationCredentials,
     updateStationCredentials,
+    addBooth,
+    updateBooth,
+    deleteBooth,
+    resetBooth,
     positions: [...positions].sort((a, b) => a.sequence - b.sequence),
     candidates,
     voters,
@@ -1264,6 +1457,7 @@ export const ElectionProvider = ({ children }) => {
     addCandidate,
     updateCandidate,
     deleteCandidate,
+    moveCandidateSequence,
     deletedCandidateIds,
     addVoter,
     updateVoter,
@@ -1277,6 +1471,7 @@ export const ElectionProvider = ({ children }) => {
     setElectionStage,
     publishBulletin,
     clearBulletin,
+    publishResultsTally,
     setElectionConfig
   };
 

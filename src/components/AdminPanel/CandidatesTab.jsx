@@ -11,7 +11,10 @@ import {
   CheckCircle2,
   GraduationCap,
   FolderOpen,
-  Crop
+  Crop,
+  ChevronUp,
+  ChevronDown,
+  Hash
 } from "lucide-react";
 import { useElection } from "../../context/ElectionContext";
 import { DEFAULT_AVATAR } from "../../utils/constants";
@@ -21,7 +24,7 @@ import { Modal } from "../common/Modal";
 import { ImageCropModal } from "../common/ImageCropModal";
 
 export const CandidatesTab = () => {
-  const { positions, candidates, addCandidate, updateCandidate, deleteCandidate } = useElection();
+  const { positions, candidates, addCandidate, updateCandidate, deleteCandidate, moveCandidateSequence } = useElection();
   const [selectedPosFilter, setSelectedPosFilter] = useState("ALL");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCandidate, setEditingCandidate] = useState(null);
@@ -47,6 +50,15 @@ export const CandidatesTab = () => {
   const filteredCandidates = selectedPosFilter === "ALL" 
     ? candidates 
     : candidates.filter((c) => c.positionId === selectedPosFilter);
+
+  const sortedCandidates = [...filteredCandidates].sort((a, b) => {
+    if (a.positionId !== b.positionId) {
+      const posA = positions.find((p) => p.id === a.positionId)?.sequence || 0;
+      const posB = positions.find((p) => p.id === b.positionId)?.sequence || 0;
+      return posA - posB;
+    }
+    return (a.sequence || 0) - (b.sequence || 0);
+  });
 
   const handleOpenAdd = () => {
     setEditingCandidate(null);
@@ -179,13 +191,71 @@ export const CandidatesTab = () => {
 
       {/* Candidate Grid */}
       <div className="candidates-admin-grid">
-        {filteredCandidates.map((cand) => {
+        {sortedCandidates.map((cand) => {
           const pos = positions.find((p) => p.id === cand.positionId);
+          const postCands = candidates
+            .filter((c) => c.positionId === cand.positionId)
+            .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+          const candIdx = postCands.findIndex((c) => c.id === cand.id);
+          const isFirst = candIdx <= 0;
+          const isLast = candIdx === postCands.length - 1;
+          const ballotNumber = candIdx + 1;
+
           return (
             <div key={cand.id} className="candidate-admin-card card-base">
               <div className="card-top-row">
-                <span className="pos-chip">{pos?.title || "Unknown Post"}</span>
-                <div className="action-icons">
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <span className="pos-chip">{pos?.title || "Unknown Post"}</span>
+                  <span style={{
+                    fontSize: "0.72rem",
+                    fontWeight: 800,
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    background: "#eff6ff",
+                    color: "#1d4ed8",
+                    border: "1px solid #bfdbfe"
+                  }}>
+                    Ballot #{ballotNumber}
+                  </span>
+                </div>
+
+                <div className="action-icons" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {/* Move Up / Down on Ballot */}
+                  <div style={{ display: "inline-flex", alignItems: "center", background: "#f1f5f9", borderRadius: "8px", padding: "2px" }}>
+                    <button
+                      type="button"
+                      disabled={isFirst}
+                      onClick={() => moveCandidateSequence(cand.id, "UP")}
+                      className="icon-action-btn"
+                      title="Move Up on Ballot (Priority 1st)"
+                      style={{
+                        opacity: isFirst ? 0.3 : 1,
+                        cursor: isFirst ? "not-allowed" : "pointer",
+                        padding: "3px 5px",
+                        border: "none",
+                        background: "transparent"
+                      }}
+                    >
+                      <ChevronUp size={15} color={isFirst ? "#94a3b8" : "#2563eb"} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isLast}
+                      onClick={() => moveCandidateSequence(cand.id, "DOWN")}
+                      className="icon-action-btn"
+                      title="Move Down on Ballot"
+                      style={{
+                        opacity: isLast ? 0.3 : 1,
+                        cursor: isLast ? "not-allowed" : "pointer",
+                        padding: "3px 5px",
+                        border: "none",
+                        background: "transparent"
+                      }}
+                    >
+                      <ChevronDown size={15} color={isLast ? "#94a3b8" : "#2563eb"} />
+                    </button>
+                  </div>
+
                   <button
                     onClick={() => handleOpenEdit(cand)}
                     className="icon-action-btn edit"

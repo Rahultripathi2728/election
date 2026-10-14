@@ -19,20 +19,11 @@ import { soundManager } from "../../utils/sound";
 import { DEFAULT_AVATAR } from "../../utils/constants";
 import { candidatePhotos } from "../../data/candidatePhotos";
 
-export const EVMPanel = () => {
+export const EVMPanel = ({ userSession }) => {
   const { electionConfig, positions, candidates, castBallot, cancelBoothAuthorization, booths, initialBooths } = useElection();
 
   const allBooths = booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []);
-  const [selectedBoothId, setSelectedBoothId] = useState(() => {
-    return localStorage.getItem("active_evm_booth_id") || "BOOTH-1";
-  });
-
-  const handleSwitchBooth = (newId) => {
-    setSelectedBoothId(newId);
-    try {
-      localStorage.setItem("active_evm_booth_id", newId);
-    } catch (e) {}
-  };
+  const selectedBoothId = userSession?.boothId || localStorage.getItem("active_evm_booth_id") || "BOOTH-1";
 
   const activeBooth = allBooths.find((b) => b.id === selectedBoothId) || allBooths[0] || electionConfig.boothState || {};
   const isUnlocked = activeBooth.status === "UNLOCKED";
@@ -190,43 +181,6 @@ export const EVMPanel = () => {
   if (!isUnlocked && !isActivelyVoting && (!isSubmitting || countdown <= 0) && (evmStep !== "SUCCESS" || countdown <= 0)) {
     return (
       <div className={`evm-terminal-container evm-locked-screen fade-in ${isFullscreen ? "fullscreen-terminal" : ""}`}>
-        {/* Top Multi-Booth Switcher Strip */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "8px",
-          marginBottom: "16px",
-          padding: "6px 14px",
-          background: "rgba(255, 255, 255, 0.95)",
-          borderRadius: "30px",
-          boxShadow: "0 4px 14px rgba(0,0,0,0.06)",
-          border: "1px solid var(--border-light)"
-        }}>
-          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Select This Device's Booth:
-          </span>
-          {allBooths.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => handleSwitchBooth(b.id)}
-              style={{
-                border: "none",
-                borderRadius: "20px",
-                padding: "4px 12px",
-                fontSize: "0.8rem",
-                fontWeight: b.id === selectedBoothId ? 800 : 600,
-                cursor: "pointer",
-                background: b.id === selectedBoothId ? "var(--primary-navy)" : "#f1f5f9",
-                color: b.id === selectedBoothId ? "#ffffff" : "var(--text-secondary)",
-                transition: "all 0.2s ease"
-              }}
-            >
-              {b.shortName || b.name}
-            </button>
-          ))}
-        </div>
-
         <div className="evm-lock-beacon-card card-base">
           <div className="evm-lock-icon-wrap">
             <Lock size={64} className="lock-icon-pulse" />
@@ -333,7 +287,9 @@ export const EVMPanel = () => {
     );
   }
 
-  const currentPosCandidates = candidates.filter((c) => c.positionId === currentPos.id);
+  const currentPosCandidates = candidates
+    .filter((c) => c.positionId === currentPos.id)
+    .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
   const selectedCandForPos = ballotSelections[currentPos.id];
 
   // -------------------------------------------------------------
