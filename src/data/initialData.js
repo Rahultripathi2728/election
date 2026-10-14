@@ -29,19 +29,50 @@ export const initialStationCredentials = {
   }
 };
 
+export const initialBooths = [
+  {
+    id: "BOOTH-1",
+    name: "EVM Terminal 01 (Alpha)",
+    shortName: "Booth #1",
+    status: "LOCKED", // "LOCKED" | "UNLOCKED" | "SUBMITTING"
+    authorizedVoter: null,
+    authorizedAt: null,
+    submittingAt: null
+  },
+  {
+    id: "BOOTH-2",
+    name: "EVM Terminal 02 (Beta)",
+    shortName: "Booth #2",
+    status: "LOCKED",
+    authorizedVoter: null,
+    authorizedAt: null,
+    submittingAt: null
+  },
+  {
+    id: "BOOTH-3",
+    name: "EVM Terminal 03 (Gamma)",
+    shortName: "Booth #3",
+    status: "LOCKED",
+    authorizedVoter: null,
+    authorizedAt: null,
+    submittingAt: null
+  }
+];
+
 export const initialElectionConfig = {
-  title: "University Student Council Elections 2026",
+  title: "SNA Student Nursing Council Elections 2026",
   institution: "Graphic Era Hill University",
-  electionId: "ELEC-2026-MAIN",
+  department: "College of Nursing",
+  bodyName: "Student Nurses' Association (SNA)",
+  electionId: "SNA-GEHU-2026",
+  scheduledDate: "Today",
+  scheduledTime: "3:00 PM (15:00 IST)",
+  scheduledTimestamp: new Date().setHours(15, 0, 0, 0),
   status: "ACTIVE", // "SETUP" | "ACTIVE" | "PAUSED" | "CONCLUDED"
   allowNota: true,
   autoLockDelaySeconds: 4,
-  boothState: {
-    status: "LOCKED", // "LOCKED" | "UNLOCKED" | "SUBMITTING"
-    authorizedVoter: null, // { studentId, name, course, semester, fatherName, photoUrl, year }
-    authorizedAt: null,
-    activeBoothId: "BOOTH-ALPHA-01"
-  },
+  booths: initialBooths,
+  boothState: initialBooths[0],
   stationCredentials: initialStationCredentials
 };
 

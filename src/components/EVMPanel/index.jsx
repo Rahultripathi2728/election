@@ -20,12 +20,24 @@ import { DEFAULT_AVATAR } from "../../utils/constants";
 import { candidatePhotos } from "../../data/candidatePhotos";
 
 export const EVMPanel = () => {
-  const { electionConfig, positions, candidates, castBallot, cancelBoothAuthorization } = useElection();
+  const { electionConfig, positions, candidates, castBallot, cancelBoothAuthorization, booths, initialBooths } = useElection();
 
-  const boothState = electionConfig.boothState || {};
-  const isUnlocked = boothState.status === "UNLOCKED";
-  const isSubmitting = boothState.status === "SUBMITTING";
-  const authorizedVoter = boothState.authorizedVoter;
+  const allBooths = booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []);
+  const [selectedBoothId, setSelectedBoothId] = useState(() => {
+    return localStorage.getItem("active_evm_booth_id") || "BOOTH-1";
+  });
+
+  const handleSwitchBooth = (newId) => {
+    setSelectedBoothId(newId);
+    try {
+      localStorage.setItem("active_evm_booth_id", newId);
+    } catch (e) {}
+  };
+
+  const activeBooth = allBooths.find((b) => b.id === selectedBoothId) || allBooths[0] || electionConfig.boothState || {};
+  const isUnlocked = activeBooth.status === "UNLOCKED";
+  const isSubmitting = activeBooth.status === "SUBMITTING";
+  const authorizedVoter = activeBooth.authorizedVoter;
 
   // Track the voter ID to prevent reset when the same voter is in progress
   const lastAuthorizedVoterIdRef = useRef(null);
@@ -99,7 +111,7 @@ export const EVMPanel = () => {
             setBallotSelections({});
             setCurrentPosIndex(0);
             if (isSubmitting) {
-              cancelBoothAuthorization();
+              cancelBoothAuthorization(activeBooth.id);
             }
             return 0;
           }
@@ -110,7 +122,7 @@ export const EVMPanel = () => {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [isSubmitting, evmStep, electionConfig.autoLockDelaySeconds]);
+  }, [isSubmitting, evmStep, electionConfig.autoLockDelaySeconds, activeBooth.id]);
 
   // If booth gets locked externally or through timeout, guarantee EVM resets
   useEffect(() => {
@@ -165,7 +177,7 @@ export const EVMPanel = () => {
 
     lastAuthorizedVoterIdRef.current = null;
     setEvmStep("SUCCESS");
-    castBallot(ballotSelections);
+    castBallot(ballotSelections, activeBooth.id);
   };
 
   // -------------------------------------------------------------
@@ -178,6 +190,43 @@ export const EVMPanel = () => {
   if (!isUnlocked && !isActivelyVoting && (!isSubmitting || countdown <= 0) && (evmStep !== "SUCCESS" || countdown <= 0)) {
     return (
       <div className={`evm-terminal-container evm-locked-screen fade-in ${isFullscreen ? "fullscreen-terminal" : ""}`}>
+        {/* Top Multi-Booth Switcher Strip */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px",
+          marginBottom: "16px",
+          padding: "6px 14px",
+          background: "rgba(255, 255, 255, 0.95)",
+          borderRadius: "30px",
+          boxShadow: "0 4px 14px rgba(0,0,0,0.06)",
+          border: "1px solid var(--border-light)"
+        }}>
+          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+            Select This Device's Booth:
+          </span>
+          {allBooths.map((b) => (
+            <button
+              key={b.id}
+              onClick={() => handleSwitchBooth(b.id)}
+              style={{
+                border: "none",
+                borderRadius: "20px",
+                padding: "4px 12px",
+                fontSize: "0.8rem",
+                fontWeight: b.id === selectedBoothId ? 800 : 600,
+                cursor: "pointer",
+                background: b.id === selectedBoothId ? "var(--primary-navy)" : "#f1f5f9",
+                color: b.id === selectedBoothId ? "#ffffff" : "var(--text-secondary)",
+                transition: "all 0.2s ease"
+              }}
+            >
+              {b.shortName || b.name}
+            </button>
+          ))}
+        </div>
+
         <div className="evm-lock-beacon-card card-base">
           <div className="evm-lock-icon-wrap">
             <Lock size={64} className="lock-icon-pulse" />
@@ -185,7 +234,7 @@ export const EVMPanel = () => {
 
           <div className="evm-status-title">EVM TERMINAL IS LOCKED</div>
           <div className="evm-booth-id">
-            TERMINAL STATION ID: <strong>{boothState.activeBoothId || "BOOTH-ALPHA-01"}</strong>
+            TERMINAL STATION: <strong>{activeBooth.name || activeBooth.shortName || activeBooth.id}</strong>
           </div>
 
           <div className="evm-lock-instructions">
@@ -193,18 +242,18 @@ export const EVMPanel = () => {
               Please present your official Student ID card at the <strong>Verification Desk</strong>.
             </p>
             <p className="evm-lock-subtext">
-              The Polling Officer will verify your electoral eligibility and unlock this terminal automatically.
+              The Polling Officer will verify your electoral eligibility and unlock this terminal (<strong>{activeBooth.shortName || activeBooth.name}</strong>) automatically.
             </p>
           </div>
 
           <div className="evm-listening-indicator">
             <Radio size={16} className="radio-pulse" />
-            <span>Listening for real-time polling officer authorization signal...</span>
+            <span>Listening for real-time signal on {activeBooth.shortName || activeBooth.name}...</span>
           </div>
 
           <div className="evm-security-seal">
             <ShieldCheck size={16} />
-            <span>Official Campus Election Commission • Zero-Paper Secure System</span>
+            <span>Graphic Era Hill University • College of Nursing • SNA Elections 2026</span>
           </div>
         </div>
       </div>

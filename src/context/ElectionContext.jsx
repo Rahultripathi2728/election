@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from "r
 import { 
   initialElectionConfig, 
   initialStationCredentials,
+  initialBooths,
   initialPositions, 
   initialCandidates, 
   initialVoters, 
@@ -46,10 +47,22 @@ export const ElectionProvider = ({ children }) => {
   // Master Election State
   const [electionConfig, setElectionConfig] = useState(() => {
     const raw = getInitialState("electionConfig", initialElectionConfig);
-    if (raw && !raw.stationCredentials) {
-      return { ...raw, stationCredentials: initialStationCredentials };
+    let updated = raw ? { ...raw } : { ...initialElectionConfig };
+    if (!updated.booths || !Array.isArray(updated.booths) || updated.booths.length === 0) {
+      updated.booths = initialBooths;
     }
-    return raw || initialElectionConfig;
+    if (!updated.boothState) {
+      updated.boothState = updated.booths[0];
+    }
+    if (!updated.stationCredentials) {
+      updated.stationCredentials = initialStationCredentials;
+    }
+    updated.title = "SNA Student Nursing Council Elections 2026";
+    updated.institution = "Graphic Era Hill University";
+    updated.department = "College of Nursing";
+    updated.bodyName = "Student Nurses' Association (SNA)";
+    updated.scheduledTime = "3:00 PM (15:00 IST)";
+    return updated;
   });
   const [positions, setPositions] = useState(() => getInitialState("positions", initialPositions));
   const [deletedCandidateIds, setDeletedCandidateIds] = useState(() => getInitialState("deletedCandidateIds", []));
@@ -204,35 +217,54 @@ export const ElectionProvider = ({ children }) => {
     const db = getDb();
     if (db) {
       try {
-        // 1. Config listener (Lock/Unlock/Status)
+        // 1. Config listener (Lock/Unlock/Status & Multi-Booths)
         unsubs.push(
           onSnapshot(doc(db, "elections", "config"), (snapshot) => {
             if (snapshot.exists()) {
               const data = snapshot.data();
               if (data.electionConfig) {
-                let incomingConfig = data.electionConfig;
+                let incomingConfig = { ...data.electionConfig };
 
-                // Watchdog Check: If incoming state says SUBMITTING but more than 8 seconds have passed since submission
+                // Ensure booths array exists
+                if (!incomingConfig.booths || !Array.isArray(incomingConfig.booths) || incomingConfig.booths.length === 0) {
+                  incomingConfig.booths = initialBooths;
+                }
+
+                // Multi-Booth Sanitizer: If any booth says SUBMITTING but is older than 8s, auto-heal
+                let hasHealed = false;
+                incomingConfig.booths = incomingConfig.booths.map((b) => {
+                  if (b.status === "SUBMITTING") {
+                    const subTime = new Date(b.submittingAt || b.authorizedAt || 0).getTime();
+                    if (subTime > 0 && Date.now() - subTime > 8000) {
+                      hasHealed = true;
+                      return { ...b, status: "LOCKED", authorizedVoter: null, authorizedAt: null, submittingAt: null };
+                    }
+                  }
+                  return b;
+                });
+
                 if (incomingConfig.boothState?.status === "SUBMITTING") {
                   const subTime = new Date(incomingConfig.boothState.submittingAt || incomingConfig.boothState.authorizedAt || 0).getTime();
-                  const ageMs = Date.now() - subTime;
-                  if (subTime > 0 && ageMs > 8000) {
-                    incomingConfig = {
-                      ...incomingConfig,
-                      boothState: {
-                        status: "LOCKED",
-                        authorizedVoter: null,
-                        authorizedAt: null,
-                        activeBoothId: incomingConfig.boothState?.activeBoothId || "BOOTH-ALPHA-01"
-                      }
+                  if (subTime > 0 && Date.now() - subTime > 8000) {
+                    hasHealed = true;
+                    incomingConfig.boothState = {
+                      status: "LOCKED",
+                      authorizedVoter: null,
+                      authorizedAt: null,
+                      activeBoothId: incomingConfig.boothState?.activeBoothId || "BOOTH-1"
                     };
-                    setDoc(doc(db, "elections", "config"), { electionConfig: incomingConfig, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
                   }
+                }
+
+                if (hasHealed) {
+                  setDoc(doc(db, "elections", "config"), { electionConfig: incomingConfig, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
                 }
 
                 isInternalUpdateRef.current = true;
                 setElectionConfig((prev) => ({
                   ...incomingConfig,
+                  booths: incomingConfig.booths || prev?.booths || initialBooths,
+                  boothState: incomingConfig.boothState || prev?.boothState || (incomingConfig.booths ? incomingConfig.booths[0] : initialBooths[0]),
                   stationCredentials: incomingConfig.stationCredentials || prev?.stationCredentials || initialStationCredentials
                 }));
                 setTimeout(() => { isInternalUpdateRef.current = false; }, 50);
@@ -372,45 +404,47 @@ export const ElectionProvider = ({ children }) => {
     };
   }, []);
 
-  // Active Watchdog: Automatically auto-locks booth if stuck in SUBMITTING state
+  // Active Watchdog: Automatically auto-locks any booth stuck in SUBMITTING state
   useEffect(() => {
     let watchdogTimer = null;
-    if (electionConfig?.boothState?.status === "SUBMITTING") {
+    const boothsList = electionConfig?.booths && Array.isArray(electionConfig.booths) ? electionConfig.booths : [];
+    const hasSubmitting = boothsList.some((b) => b.status === "SUBMITTING") || electionConfig?.boothState?.status === "SUBMITTING";
+
+    if (hasSubmitting) {
       const delayMs = ((electionConfig.autoLockDelaySeconds || 4) + 1.5) * 1000;
       watchdogTimer = setTimeout(() => {
         setElectionConfig((prev) => {
-          if (prev?.boothState?.status === "SUBMITTING") {
-            const lockedConfig = {
-              ...prev,
-              boothState: {
-                status: "LOCKED",
-                authorizedVoter: null,
-                authorizedAt: null,
-                activeBoothId: prev?.boothState?.activeBoothId || "BOOTH-ALPHA-01"
-              }
-            };
-            persistDirectToCloud({ electionConfig: lockedConfig });
-            if (broadcastChannelRef.current) {
-              broadcastChannelRef.current.postMessage({
-                type: "STATE_SYNC",
-                payload: { electionConfig: lockedConfig }
-              });
-            }
-            appendLog(
-              "EVM_AUTO_LOCKED",
-              "System Watchdog",
-              "EVM terminal automatically transitioned from SUBMITTING to LOCKED standby."
-            );
-            return lockedConfig;
+          const list = prev?.booths && Array.isArray(prev.booths) ? prev.booths : initialBooths;
+          const healed = list.map((b) =>
+            b.status === "SUBMITTING"
+              ? { ...b, status: "LOCKED", authorizedVoter: null, authorizedAt: null, submittingAt: null }
+              : b
+          );
+          const lockedConfig = {
+            ...prev,
+            booths: healed,
+            boothState: healed[0]
+          };
+          persistDirectToCloud({ electionConfig: lockedConfig });
+          if (broadcastChannelRef.current) {
+            broadcastChannelRef.current.postMessage({
+              type: "STATE_SYNC",
+              payload: { electionConfig: lockedConfig }
+            });
           }
-          return prev;
+          appendLog(
+            "EVM_AUTO_LOCKED",
+            "System Watchdog",
+            "EVM terminal automatically transitioned from SUBMITTING to LOCKED standby."
+          );
+          return lockedConfig;
         });
       }, delayMs);
     }
     return () => {
       if (watchdogTimer) clearTimeout(watchdogTimer);
     };
-  }, [electionConfig?.boothState?.status, electionConfig?.autoLockDelaySeconds]);
+  }, [electionConfig?.booths, electionConfig?.boothState?.status, electionConfig?.autoLockDelaySeconds]);
 
   // Save to LocalStorage, BroadcastChannel, and Firestore Modular Documents
   useEffect(() => {
@@ -475,11 +509,15 @@ export const ElectionProvider = ({ children }) => {
     if (voter.hasVoted) {
       return { status: "ALREADY_VOTED", voter };
     }
-    if (
-      electionConfig.boothState?.status === "UNLOCKED" && 
-      electionConfig.boothState?.authorizedVoter?.studentId?.toUpperCase() === voter.studentId.toUpperCase()
-    ) {
-      return { status: "IN_BOOTH", voter };
+    const currentBooths = electionConfig.booths && Array.isArray(electionConfig.booths)
+      ? electionConfig.booths
+      : [electionConfig.boothState];
+    const boothOccupied = currentBooths.find(
+      (b) => b && (b.status === "UNLOCKED" || b.status === "SUBMITTING") &&
+             b.authorizedVoter?.studentId?.toUpperCase() === voter.studentId.toUpperCase()
+    );
+    if (boothOccupied) {
+      return { status: "IN_BOOTH", voter, booth: boothOccupied };
     }
     return { status: "ELIGIBLE", voter };
   };
@@ -514,19 +552,28 @@ export const ElectionProvider = ({ children }) => {
       status: "MULTIPLE_MATCHES",
       query,
       count: nameMatches.length,
-      matches: nameMatches.map((v) => ({
-        ...v,
-        currentStatus: v.hasVoted
-          ? "ALREADY_VOTED"
-          : (electionConfig.boothState?.status === "UNLOCKED" &&
-             electionConfig.boothState?.authorizedVoter?.studentId?.toUpperCase() === v.studentId.toUpperCase())
-          ? "IN_BOOTH"
-          : "ELIGIBLE"
-      }))
+      matches: nameMatches.map((v) => {
+        const currentBooths = electionConfig.booths && Array.isArray(electionConfig.booths)
+          ? electionConfig.booths
+          : [electionConfig.boothState];
+        const boothOccupied = currentBooths.find(
+          (b) => b && (b.status === "UNLOCKED" || b.status === "SUBMITTING") &&
+                 b.authorizedVoter?.studentId?.toUpperCase() === v.studentId.toUpperCase()
+        );
+        return {
+          ...v,
+          currentStatus: v.hasVoted
+            ? "ALREADY_VOTED"
+            : boothOccupied
+            ? "IN_BOOTH"
+            : "ELIGIBLE",
+          occupiedBooth: boothOccupied
+        };
+      })
     };
   };
 
-  const authorizeVoterForBooth = (studentId, boothId = "BOOTH-ALPHA-01") => {
+  const authorizeVoterForBooth = (studentId, requestedBoothId = null) => {
     const cleanId = studentId.trim().toUpperCase();
     const voter = voters.find((v) => v.studentId.toUpperCase() === cleanId);
 
@@ -540,6 +587,19 @@ export const ElectionProvider = ({ children }) => {
       return { success: false, message: `Student ${voter.name} has already cast their ballot!` };
     }
 
+    const currentBooths = electionConfig.booths && Array.isArray(electionConfig.booths) && electionConfig.booths.length > 0
+      ? electionConfig.booths
+      : initialBooths;
+
+    // Pick requested booth or first available free booth
+    let targetBoothId = requestedBoothId;
+    if (!targetBoothId) {
+      const freeBooth = currentBooths.find((b) => b.status === "LOCKED");
+      targetBoothId = freeBooth ? freeBooth.id : currentBooths[0].id;
+    }
+
+    const targetBoothObj = currentBooths.find((b) => b.id === targetBoothId) || currentBooths[0];
+
     const now = new Date().toISOString();
 
     // Mark voter as authorized
@@ -551,26 +611,36 @@ export const ElectionProvider = ({ children }) => {
       )
     );
 
-    // Unlock EVM Terminal with voter profile
-    const newBoothState = {
-      status: "UNLOCKED",
-      authorizedVoter: {
-        studentId: voter.studentId,
-        name: voter.name,
-        fatherName: voter.fatherName,
-        course: voter.course,
-        year: voter.year,
-        semester: voter.semester,
-        photoUrl: voter.photoUrl
-      },
-      authorizedAt: now,
-      activeBoothId: boothId
+    const voterPayload = {
+      studentId: voter.studentId,
+      name: voter.name,
+      fatherName: voter.fatherName,
+      course: voter.course,
+      year: voter.year,
+      semester: voter.semester,
+      photoUrl: voter.photoUrl
     };
+
+    const updatedBooths = currentBooths.map((b) =>
+      b.id === targetBoothId
+        ? {
+            ...b,
+            status: "UNLOCKED",
+            authorizedVoter: voterPayload,
+            authorizedAt: now,
+            submittingAt: null
+          }
+        : b
+    );
+
+    const primaryBooth = updatedBooths.find((b) => b.id === targetBoothId) || updatedBooths[0];
 
     const updatedBoothConfig = {
       ...electionConfig,
-      boothState: newBoothState
+      booths: updatedBooths,
+      boothState: primaryBooth
     };
+
     setElectionConfig(updatedBoothConfig);
     persistDirectToCloud({ electionConfig: updatedBoothConfig });
     if (broadcastChannelRef.current) {
@@ -583,24 +653,44 @@ export const ElectionProvider = ({ children }) => {
     soundManager.playAuthorizeChime();
     appendLog(
       "VOTER_AUTHORIZED",
-      `Verification Desk (${boothId})`,
-      `Authorized ${voter.name} (${voter.studentId}, ${voter.year}) for EVM Terminal`
+      `Verification Desk (${targetBoothObj.shortName || targetBoothId})`,
+      `Authorized ${voter.name} (${voter.studentId}, ${voter.year}) for ${targetBoothObj.name || targetBoothId}`
     );
 
-    return { success: true, message: `Voter ${voter.name} successfully authorized for EVM booth!` };
+    return { 
+      success: true, 
+      boothId: targetBoothId,
+      boothName: targetBoothObj.shortName || targetBoothObj.name || targetBoothId,
+      message: `Voter ${voter.name} authorized for ${targetBoothObj.shortName || targetBoothObj.name}!` 
+    };
   };
 
-  const cancelBoothAuthorization = () => {
-    const currentVoter = electionConfig.boothState.authorizedVoter;
+  const cancelBoothAuthorization = (targetBoothId = null) => {
+    const currentBooths = electionConfig.booths && Array.isArray(electionConfig.booths) && electionConfig.booths.length > 0
+      ? electionConfig.booths
+      : initialBooths;
+
+    let revokedVoterName = "";
+    const updatedBooths = currentBooths.map((b) => {
+      if (!targetBoothId || b.id === targetBoothId) {
+        if (b.authorizedVoter) revokedVoterName = b.authorizedVoter.name;
+        return {
+          ...b,
+          status: "LOCKED",
+          authorizedVoter: null,
+          authorizedAt: null,
+          submittingAt: null
+        };
+      }
+      return b;
+    });
+
     const lockedBoothConfig = {
       ...electionConfig,
-      boothState: {
-        status: "LOCKED",
-        authorizedVoter: null,
-        authorizedAt: null,
-        activeBoothId: "BOOTH-ALPHA-01"
-      }
+      booths: updatedBooths,
+      boothState: updatedBooths[0]
     };
+
     setElectionConfig(lockedBoothConfig);
     persistDirectToCloud({ electionConfig: lockedBoothConfig });
     if (broadcastChannelRef.current) {
@@ -611,20 +701,28 @@ export const ElectionProvider = ({ children }) => {
     }
 
     soundManager.playSelectBeep();
-    if (currentVoter) {
+    if (revokedVoterName) {
       appendLog(
         "AUTHORIZATION_REVOKED",
         "Polling Officer",
-        `Authorization revoked for ${currentVoter.name} (${currentVoter.studentId}). EVM Terminal reset to Locked Standby.`
+        `Authorization revoked for ${revokedVoterName}. EVM Terminal reset to Locked Standby.`
       );
     }
     return { success: true };
   };
 
   // 2. Cast Ballot from EVM Terminal & Record Detailed Vote Trail (Year-wise routing)
-  const castBallot = async (selections) => {
+  const castBallot = async (selections, sourceBoothId = null) => {
     // selections is { [positionId]: candidateId | 'NOTA' }
-    const currentVoter = electionConfig.boothState.authorizedVoter;
+    const currentBooths = electionConfig.booths && Array.isArray(electionConfig.booths) && electionConfig.booths.length > 0
+      ? electionConfig.booths
+      : initialBooths;
+
+    const targetBooth = (sourceBoothId ? currentBooths.find((b) => b.id === sourceBoothId) : null) ||
+      currentBooths.find((b) => b.authorizedVoter) ||
+      currentBooths[0];
+
+    const currentVoter = targetBooth.authorizedVoter;
     if (!currentVoter) {
       soundManager.playErrorBuzzer();
       return { success: false, message: "No authorized voter at terminal." };
@@ -678,7 +776,7 @@ export const ElectionProvider = ({ children }) => {
       year: voterYear,
       semester: voterSem,
       fatherName: currentVoter.fatherName,
-      boothId: electionConfig.boothState.activeBoothId || "BOOTH-ALPHA-01",
+      boothId: targetBooth.id || "BOOTH-1",
       selections: { ...selections }
     };
 
@@ -690,10 +788,17 @@ export const ElectionProvider = ({ children }) => {
     soundManager.playVoteConfirmationBeep();
 
     // 6. Update booth state to SUBMITTING, then lock after autoLockDelaySeconds
+    const updatedSubmittingBooths = currentBooths.map((b) =>
+      b.id === targetBooth.id
+        ? { ...b, status: "SUBMITTING", submittingAt: now }
+        : b
+    );
+
     const submittingBoothState = {
       ...electionConfig,
+      booths: updatedSubmittingBooths,
       boothState: {
-        ...electionConfig.boothState,
+        ...targetBooth,
         status: "SUBMITTING",
         submittingAt: now
       }
@@ -705,20 +810,15 @@ export const ElectionProvider = ({ children }) => {
     if (db) {
       try {
         await Promise.all([
-          // Update candidates votes
           setDoc(doc(db, "elections", "candidates"), { candidates: updatedCandidates, updatedAt: now }, { merge: true }),
-          // Update voter hasVoted
           setDoc(doc(db, "elections", "voters"), { voters: updatedVoters, updatedAt: now }, { merge: true }),
-          // Append to specific year's ballots document
           setDoc(doc(db, "elections", targetDocName), {
             ballots: ballotsByYearRef.current[yearKey],
             year: voterYear,
             semester: voterSem,
             updatedAt: now
           }, { merge: true }),
-          // Update booth status
           setDoc(doc(db, "elections", "config"), { electionConfig: submittingBoothState, updatedAt: now }, { merge: true }),
-          // Mirror backup
           setDoc(doc(db, "elections", "live_council_state"), {
             candidates: updatedCandidates,
             voters: updatedVoters,
@@ -733,20 +833,22 @@ export const ElectionProvider = ({ children }) => {
 
     appendLog(
       "BALLOT_CAST",
-      `EVM Booth (${electionConfig.boothState.activeBoothId})`,
+      `EVM Booth (${targetBooth.name || targetBooth.id})`,
       `Official ballot recorded securely for ${currentVoter.name} (${currentVoter.studentId}, ${voterYear} - ${voterSem}). Terminal locked.`
     );
 
     setTimeout(() => {
       setElectionConfig((prev) => {
+        const boothsList = prev?.booths && Array.isArray(prev.booths) ? prev.booths : initialBooths;
+        const reLockedBooths = boothsList.map((b) =>
+          b.id === targetBooth.id
+            ? { ...b, status: "LOCKED", authorizedVoter: null, authorizedAt: null, submittingAt: null }
+            : b
+        );
         const lockedConfig = {
           ...prev,
-          boothState: {
-            status: "LOCKED",
-            authorizedVoter: null,
-            authorizedAt: null,
-            activeBoothId: prev?.boothState?.activeBoothId || "BOOTH-ALPHA-01"
-          }
+          booths: reLockedBooths,
+          boothState: reLockedBooths[0]
         };
         persistDirectToCloud({ electionConfig: lockedConfig });
         if (broadcastChannelRef.current) {
@@ -1085,6 +1187,8 @@ export const ElectionProvider = ({ children }) => {
 
   const value = {
     electionConfig,
+    booths: electionConfig?.booths || initialBooths,
+    initialBooths,
     initialStationCredentials,
     updateStationCredentials,
     positions: [...positions].sort((a, b) => a.sequence - b.sequence),

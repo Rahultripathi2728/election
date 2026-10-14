@@ -34,8 +34,12 @@ export const VerificationPanel = () => {
     verifyStudent, 
     authorizeVoterForBooth, 
     cancelBoothAuthorization,
-    addVoter
+    addVoter,
+    booths,
+    initialBooths
   } = useElection();
+
+  const allBooths = booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []);
 
   const [inputQuery, setInputQuery] = useState("");
   const [currentVerification, setCurrentVerification] = useState(null);
@@ -58,10 +62,6 @@ export const VerificationPanel = () => {
   });
   const [regError, setRegError] = useState("");
 
-  const boothState = electionConfig.boothState || {};
-  const isBoothUnlocked = boothState.status === "UNLOCKED";
-  const isBoothSubmitting = boothState.status === "SUBMITTING";
-
   // Real-time reactive update: Automatically updates verification card when voter votes or booth changes
   useEffect(() => {
     if (currentVerification && currentVerification.voter) {
@@ -70,7 +70,7 @@ export const VerificationPanel = () => {
         setCurrentVerification(updated);
       }
     }
-  }, [voters, electionConfig.boothState]);
+  }, [voters, electionConfig.booths, electionConfig.boothState]);
 
   // Quick lookup function
   const handlePerformLookup = (idToLookup) => {
@@ -88,7 +88,7 @@ export const VerificationPanel = () => {
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      // If eligible student is displayed, Enter authorizes them directly!
+      // If eligible student is displayed, Enter authorizes them directly to next free booth!
       if (currentVerification && currentVerification.status === "ELIGIBLE" && currentVerification.voter) {
         handleAuthorize();
       } else {
@@ -97,21 +97,24 @@ export const VerificationPanel = () => {
     }
   };
 
-  const handleAuthorize = (specificVoter) => {
+  const handleAuthorize = (specificVoter, requestedBoothId = null) => {
     const voter = specificVoter || currentVerification?.voter;
     if (!voter) return;
 
-    if (isBoothUnlocked) {
-      if (!window.confirm("The EVM booth is currently occupied with an authorized voter. Override and re-authorize?")) {
-        return;
+    if (requestedBoothId) {
+      const bObj = allBooths.find((b) => b.id === requestedBoothId);
+      if (bObj && (bObj.status === "UNLOCKED" || bObj.status === "SUBMITTING")) {
+        if (!window.confirm(`${bObj.shortName || bObj.name} is currently occupied with ${bObj.authorizedVoter?.name || 'an authorized voter'}. Override and re-authorize?`)) {
+          return;
+        }
       }
     }
 
-    const res = authorizeVoterForBooth(voter.studentId);
+    const res = authorizeVoterForBooth(voter.studentId, requestedBoothId);
     if (res.success) {
       setFeedbackMessage({
         type: "success",
-        text: `Voter ${voter.name} (${voter.studentId}) authorized! EVM Terminal is now UNLOCKED.`
+        text: `Voter ${voter.name} (${voter.studentId}) dispatched to ${res.boothName || 'EVM Booth'}! Terminal is now UNLOCKED.`
       });
       const updated = verifyStudent(voter.studentId);
       setCurrentVerification(updated);
@@ -123,11 +126,12 @@ export const VerificationPanel = () => {
     }
   };
 
-  const handleRelockBooth = () => {
-    cancelBoothAuthorization();
+  const handleRelockBooth = (boothId = null) => {
+    const targetBooth = allBooths.find((b) => b.id === boothId) || allBooths[0];
+    cancelBoothAuthorization(boothId);
     setFeedbackMessage({
       type: "info",
-      text: "EVM Terminal Alpha-01 has been locked and reset to Standby."
+      text: `${targetBooth?.shortName || targetBooth?.name || 'EVM Terminal'} has been locked and reset to Standby.`
     });
     if (currentVerification && currentVerification.voter) {
       const updated = verifyStudent(currentVerification.voter.studentId);
@@ -252,45 +256,76 @@ export const VerificationPanel = () => {
           </div>
         </div>
 
-        {/* Center: Live Linked EVM Terminal Beacon */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        {/* Center: Live Linked EVM Multi-Booth Matrix */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
           <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-            EVM Terminal:
+            EVM Booths ({allBooths.length}):
           </span>
-          <div className={`monitor-status-box ${
-            isBoothSubmitting 
-              ? "monitor-submitting" 
-              : isBoothUnlocked 
-              ? "monitor-unlocked" 
-              : "monitor-locked"
-          }`} style={{ padding: "4px 10px", fontSize: "0.8rem", margin: 0 }}>
-            <span className="live-dot" />
-            <span className="monitor-status-text">
-              {isBoothSubmitting ? (
-                <>⏳ Recording Ballot...</>
-              ) : isBoothUnlocked ? (
-                <>
-                  <Unlock size={13} /> UNLOCKED ({boothState.authorizedVoter?.name?.split(" ")[0]} in booth)
-                </>
-              ) : (
-                <>
-                  <Lock size={13} /> STANDBY / LOCKED
-                </>
-              )}
-            </span>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {allBooths.map((b) => {
+              const isSub = b.status === "SUBMITTING";
+              const isUnl = b.status === "UNLOCKED";
+              return (
+                <div
+                  key={b.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "4px 10px",
+                    borderRadius: "8px",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    border: isSub
+                      ? "1.5px solid #f59e0b"
+                      : isUnl
+                      ? "1.5px solid #10b981"
+                      : "1.5px solid #cbd5e1",
+                    background: isSub ? "#fffbeb" : isUnl ? "#ecfdf5" : "#f8fafc",
+                    color: isSub ? "#b45309" : isUnl ? "#047857" : "#475569"
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      background: isSub ? "#f59e0b" : isUnl ? "#10b981" : "#94a3b8",
+                      animation: (isSub || isUnl) ? "pulse 1.5s infinite" : "none"
+                    }}
+                  />
+                  <span>{b.shortName || b.name}:</span>
+                  <span>
+                    {isSub ? (
+                      "⏳ Recording..."
+                    ) : isUnl ? (
+                      `🟢 ${b.authorizedVoter?.name?.split(" ")[0] || "In Use"}`
+                    ) : (
+                      "🔒 Ready"
+                    )}
+                  </span>
+                  {(isUnl || isSub) && (
+                    <button
+                      type="button"
+                      onClick={() => handleRelockBooth(b.id)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#ef4444",
+                        cursor: "pointer",
+                        padding: "1px 4px",
+                        fontSize: "0.7rem",
+                        marginLeft: "4px"
+                      }}
+                      title={`Force reset ${b.shortName || b.name} to Standby`}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
-
-          {/* Quick Re-Lock / Force Reset Button */}
-          {(isBoothUnlocked || isBoothSubmitting) && (
-            <button
-              onClick={handleRelockBooth}
-              className="btn-secondary btn-sm"
-              style={{ padding: "3px 8px", fontSize: "0.75rem", borderColor: "var(--danger-border)", color: "var(--danger)" }}
-              title="Cancel current authorization or stuck ballot recording and reset EVM to Standby"
-            >
-              <Lock size={12} /> {isBoothSubmitting ? "Force Reset EVM" : "Re-Lock EVM"}
-            </button>
-          )}
         </div>
 
         {/* Right: Quick Action Modals */}
@@ -522,44 +557,85 @@ export const VerificationPanel = () => {
           </div>
 
           {/* Right: Direct Action Area Right At Eye Level (NO SCROLLING!) */}
-          <div style={{ display: "flex", alignItems: "center", minWidth: "250px", justifyContent: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", minWidth: "280px", justifyContent: "center" }}>
             {currentVerification.status === "ELIGIBLE" && (
-              <button
-                onClick={() => handleAuthorize()}
-                className="btn-success"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "14px 22px",
-                  borderRadius: "12px",
-                  fontSize: "1rem",
-                  fontWeight: 800,
-                  boxShadow: "0 6px 18px rgba(16, 185, 129, 0.35)",
-                  cursor: "pointer"
-                }}
-              >
-                <Unlock size={22} />
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15 }}>
-                  <span>AUTHORIZE FOR BOOTH</span>
-                  <span style={{ fontSize: "0.72rem", opacity: 0.9, fontWeight: 500 }}>Press ENTER ↵ to Unlock EVM</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                {/* Auto-Assign Button (Enter Key) */}
+                <button
+                  onClick={() => handleAuthorize()}
+                  className="btn-success"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    padding: "10px 16px",
+                    borderRadius: "10px",
+                    fontSize: "0.95rem",
+                    fontWeight: 800,
+                    boxShadow: "0 4px 14px rgba(16, 185, 129, 0.3)",
+                    cursor: "pointer"
+                  }}
+                  title="Auto-assigns to the first available free EVM booth"
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Sparkles size={18} />
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15 }}>
+                      <span>AUTO-ASSIGN NEXT FREE BOOTH</span>
+                      <span style={{ fontSize: "0.7rem", opacity: 0.9, fontWeight: 500 }}>Press ENTER ↵ to auto-dispatch</span>
+                    </div>
+                  </div>
+                  <ArrowRight size={16} />
+                </button>
+
+                {/* Explicit Multi-Booth Dispatch Options */}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 700 }}>OR DISPATCH TO:</span>
+                  {allBooths.map((b) => {
+                    const isBusy = b.status === "UNLOCKED" || b.status === "SUBMITTING";
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => handleAuthorize(null, b.id)}
+                        className="btn-secondary btn-sm"
+                        style={{
+                          fontSize: "0.75rem",
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          fontWeight: 700,
+                          borderColor: isBusy ? "#fcd34d" : "var(--border-light)",
+                          background: isBusy ? "#fffbeb" : "var(--bg-card)",
+                          cursor: "pointer"
+                        }}
+                        title={isBusy ? `Currently occupied by ${b.authorizedVoter?.name}. Click to override.` : `Free booth. Click to dispatch.`}
+                      >
+                        <Unlock size={11} color={isBusy ? "#d97706" : "#10b981"} />
+                        <span>{b.shortName || b.name}</span>
+                        <span style={{ fontSize: "0.68rem", color: isBusy ? "#b45309" : "#059669", marginLeft: "2px" }}>
+                          ({isBusy ? "In-Use" : "Ready"})
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <ArrowRight size={18} />
-              </button>
+              </div>
             )}
 
             {currentVerification.status === "IN_BOOTH" && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", width: "100%" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#10b981", fontSize: "0.85rem", fontWeight: 700 }}>
                   <Radio size={16} className="animate-pulse" />
-                  <span>Voter Currently Inside EVM Booth</span>
+                  <span>
+                    Voting in {currentVerification.occupiedBooth?.shortName || currentVerification.occupiedBooth?.name || currentVerification.booth?.shortName || "EVM Booth"}
+                  </span>
                 </div>
                 <button
-                  onClick={handleRelockBooth}
+                  onClick={() => handleRelockBooth(currentVerification.occupiedBooth?.id || currentVerification.booth?.id)}
                   className="btn-secondary text-danger"
                   style={{ fontSize: "0.8rem", padding: "6px 12px" }}
                 >
-                  <RotateCcw size={14} /> Cancel & Re-Lock EVM
+                  <RotateCcw size={14} /> Cancel & Re-Lock This Booth
                 </button>
               </div>
             )}
