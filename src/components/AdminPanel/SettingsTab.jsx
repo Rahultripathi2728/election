@@ -79,6 +79,7 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
   const [showBoothPasswords, setShowBoothPasswords] = useState({});
   const [editingBoothCreds, setEditingBoothCreds] = useState({});
   const [boothFeedback, setBoothFeedback] = useState(null);
+  const [boothToDelete, setBoothToDelete] = useState(null);
 
   // Results Publication Schedule State
   const [resultsInterval, setResultsInterval] = useState(electionConfig?.resultsUpdateInterval || "15 minutes");
@@ -189,15 +190,7 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
   };
 
   const handleDeleteBooth = (boothId, boothName) => {
-    if (window.confirm(`Are you sure you want to delete ${boothName}?`)) {
-      const res = deleteBooth(boothId);
-      if (!res.success) {
-        setBoothFeedback({ type: "error", text: res.message });
-      } else {
-        setBoothFeedback({ type: "success", text: `${boothName} removed successfully.` });
-      }
-      setTimeout(() => setBoothFeedback(null), 3000);
-    }
+    setBoothToDelete({ id: boothId, name: boothName });
   };
 
   // Station Passwords Management State
@@ -1553,6 +1546,54 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
           </div>
         </form>
       </Modal>
+
+      {/* Delete Booth Confirmation Modal */}
+      {boothToDelete && (
+        <Modal
+          isOpen={!!boothToDelete}
+          onClose={() => setBoothToDelete(null)}
+          title={`Confirm Deletion: ${boothToDelete.name}`}
+          maxWidth="480px"
+        >
+          <div style={{ padding: "20px 24px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px", color: "#dc2626" }}>
+              <AlertTriangle size={28} />
+              <h4 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800 }}>
+                Unregister & Delete EVM Station?
+              </h4>
+            </div>
+            <p style={{ margin: "0 0 16px", fontSize: "0.88rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete <strong>{boothToDelete.name}</strong>? This booth terminal will be removed from the system and will no longer appear on the Verification Desk or login options.
+            </p>
+          </div>
+          <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", padding: "14px 24px" }}>
+            <button
+              type="button"
+              onClick={() => setBoothToDelete(null)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const res = deleteBooth(boothToDelete.id);
+                if (!res.success) {
+                  setBoothFeedback({ type: "error", text: res.message });
+                } else {
+                  setBoothFeedback({ type: "success", text: `${boothToDelete.name} deleted successfully.` });
+                }
+                setTimeout(() => setBoothFeedback(null), 3500);
+                setBoothToDelete(null);
+              }}
+              className="btn-danger"
+              style={{ fontWeight: 800 }}
+            >
+              <Trash2 size={16} /> Delete Booth
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

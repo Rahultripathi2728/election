@@ -44,15 +44,33 @@ const getInitialState = (key, fallback) => {
 const ElectionContext = createContext(null);
 
 export const ElectionProvider = ({ children }) => {
+  // Persistent Booth Tombstone (prevents deleted booths like booth3 from ever reappearing)
+  const [deletedBoothIds, setDeletedBoothIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem("paperless_election_deleted_booths") || getInitialState("deletedBoothIds", []);
+      return Array.isArray(saved) ? saved : (typeof saved === "string" ? JSON.parse(saved) : []);
+    } catch (e) {
+      return [];
+    }
+  });
+
   // Master Election State
   const [electionConfig, setElectionConfig] = useState(() => {
     const raw = getInitialState("electionConfig", initialElectionConfig);
     let updated = raw ? { ...raw } : { ...initialElectionConfig };
-    if (!updated.booths || !Array.isArray(updated.booths) || updated.booths.length === 0) {
-      updated.booths = initialBooths;
-    }
-    if (!updated.boothState) {
-      updated.boothState = updated.booths[0];
+    
+    const deadBooths = (() => {
+      try {
+        const s = localStorage.getItem("paperless_election_deleted_booths");
+        return s ? JSON.parse(s) : [];
+      } catch (e) { return []; }
+    })();
+
+    const baseBooths = updated.booths && Array.isArray(updated.booths) && updated.booths.length > 0 ? updated.booths : initialBooths;
+    updated.booths = baseBooths.filter((b) => !deadBooths.includes(b.id));
+
+    if (!updated.boothState || deadBooths.includes(updated.boothState?.id)) {
+      updated.boothState = updated.booths[0] || initialBooths[0];
     }
     if (!updated.stationCredentials) {
       updated.stationCredentials = initialStationCredentials;
@@ -135,6 +153,33 @@ export const ElectionProvider = ({ children }) => {
     }
   };
 
+  // Safe Booth Merging: Protect active voting sessions and respect deleted booth tombstones
+  const mergeBoothsPreservingActive = (prevBooths = [], incomingBooths = [], isExplicitRevoke = false, deadIds = []) => {
+    const deadSet = new Set(deadIds);
+    const rawIncoming = (Array.isArray(incomingBooths) && incomingBooths.length > 0 ? incomingBooths : initialBooths)
+      .filter((b) => !deadSet.has(b.id));
+
+    if (isExplicitRevoke) {
+      return rawIncoming;
+    }
+
+    const prevMap = new Map((prevBooths || []).map((b) => [b.id, b]));
+
+    return rawIncoming.map((inBooth) => {
+      const prevBooth = prevMap.get(inBooth.id);
+      // If locally this booth is UNLOCKED or SUBMITTING (student actively at terminal),
+      // DO NOT let a background sync clobber it to LOCKED unless explicit revocation was requested
+      if (
+        prevBooth &&
+        (prevBooth.status === "UNLOCKED" || prevBooth.status === "SUBMITTING") &&
+        inBooth.status === "LOCKED"
+      ) {
+        return prevBooth;
+      }
+      return inBooth;
+    });
+  };
+
   // Initialize Firebase, BroadcastChannel, and Modular Firestore Listeners
   useEffect(() => {
     const fbResult = initFirebase();
@@ -148,20 +193,39 @@ export const ElectionProvider = ({ children }) => {
         const { type, payload } = event.data;
         if (type === "STATE_SYNC") {
           isInternalUpdateRef.current = true;
+          if (payload.deletedBoothIds && Array.isArray(payload.deletedBoothIds)) {
+            setDeletedBoothIds((prev) => {
+              const combined = Array.from(new Set([...prev, ...payload.deletedBoothIds]));
+              try {
+                localStorage.setItem("paperless_election_deleted_booths", JSON.stringify(combined));
+              } catch (e) {}
+              return combined;
+            });
+          }
           if (payload.electionConfig) {
             setElectionConfig((prevConfig) => {
-              // Prevent background sync from kicking out an active voter
+              const deadList = payload.deletedBoothIds || deletedBoothIds;
+              const mergedBooths = mergeBoothsPreservingActive(
+                prevConfig?.booths,
+                payload.electionConfig.booths,
+                payload.isExplicitRevoke,
+                deadList
+              );
+
+              let activeBoothState = payload.electionConfig.boothState;
               if (
                 prevConfig?.boothState?.status === "UNLOCKED" &&
                 payload.electionConfig?.boothState?.status === "LOCKED" &&
                 !payload.isExplicitRevoke
               ) {
-                return {
-                  ...payload.electionConfig,
-                  boothState: prevConfig.boothState
-                };
+                activeBoothState = prevConfig.boothState;
               }
-              return payload.electionConfig;
+
+              return {
+                ...payload.electionConfig,
+                booths: mergedBooths,
+                boothState: activeBoothState || mergedBooths[0]
+              };
             });
           }
           if (payload.positions) setPositions(payload.positions);
@@ -187,18 +251,29 @@ export const ElectionProvider = ({ children }) => {
         try {
           const parsed = JSON.parse(e.newValue);
           isInternalUpdateRef.current = true;
+          if (parsed.deletedBoothIds && Array.isArray(parsed.deletedBoothIds)) {
+            setDeletedBoothIds((prev) => Array.from(new Set([...prev, ...parsed.deletedBoothIds])));
+          }
           if (parsed.electionConfig) {
             setElectionConfig((prevConfig) => {
+              const mergedBooths = mergeBoothsPreservingActive(
+                prevConfig?.booths,
+                parsed.electionConfig.booths,
+                false,
+                deletedBoothIds
+              );
+              let activeBoothState = parsed.electionConfig.boothState;
               if (
                 prevConfig?.boothState?.status === "UNLOCKED" &&
                 parsed.electionConfig?.boothState?.status === "LOCKED"
               ) {
-                return {
-                  ...parsed.electionConfig,
-                  boothState: prevConfig.boothState
-                };
+                activeBoothState = prevConfig.boothState;
               }
-              return parsed.electionConfig;
+              return {
+                ...parsed.electionConfig,
+                booths: mergedBooths,
+                boothState: activeBoothState || mergedBooths[0]
+              };
             });
           }
           if (parsed.positions) setPositions(parsed.positions);
@@ -229,48 +304,72 @@ export const ElectionProvider = ({ children }) => {
               if (data.electionConfig) {
                 let incomingConfig = { ...data.electionConfig };
 
-                // Ensure booths array exists
-                if (!incomingConfig.booths || !Array.isArray(incomingConfig.booths) || incomingConfig.booths.length === 0) {
-                  incomingConfig.booths = initialBooths;
+                const cloudDead = Array.isArray(incomingConfig.deletedBoothIds)
+                  ? incomingConfig.deletedBoothIds
+                  : [];
+
+                if (cloudDead.length > 0) {
+                  setDeletedBoothIds((prev) => {
+                    const combined = Array.from(new Set([...prev, ...cloudDead]));
+                    try {
+                      localStorage.setItem("paperless_election_deleted_booths", JSON.stringify(combined));
+                    } catch (e) {}
+                    return combined;
+                  });
                 }
 
-                // Multi-Booth Sanitizer: If any booth says SUBMITTING but is older than 8s, auto-heal
+                const deadSet = new Set([...deletedBoothIds, ...cloudDead]);
+
+                // Multi-Booth Sanitizer: If any booth says SUBMITTING but is older than 12s, auto-heal
                 let hasHealed = false;
-                incomingConfig.booths = incomingConfig.booths.map((b) => {
-                  if (b.status === "SUBMITTING") {
-                    const subTime = new Date(b.submittingAt || b.authorizedAt || 0).getTime();
-                    if (subTime > 0 && Date.now() - subTime > 8000) {
-                      hasHealed = true;
-                      return { ...b, status: "LOCKED", authorizedVoter: null, authorizedAt: null, submittingAt: null };
+                let sanitizedBooths = (incomingConfig.booths || initialBooths)
+                  .filter((b) => !deadSet.has(b.id))
+                  .map((b) => {
+                    if (b.status === "SUBMITTING") {
+                      const subTime = new Date(b.submittingAt || b.authorizedAt || 0).getTime();
+                      if (subTime > 0 && Date.now() - subTime > 12000) {
+                        hasHealed = true;
+                        return { ...b, status: "LOCKED", authorizedVoter: null, authorizedAt: null, submittingAt: null };
+                      }
                     }
-                  }
-                  return b;
-                });
+                    return b;
+                  });
 
                 if (incomingConfig.boothState?.status === "SUBMITTING") {
                   const subTime = new Date(incomingConfig.boothState.submittingAt || incomingConfig.boothState.authorizedAt || 0).getTime();
-                  if (subTime > 0 && Date.now() - subTime > 8000) {
+                  if (subTime > 0 && Date.now() - subTime > 12000) {
                     hasHealed = true;
                     incomingConfig.boothState = {
                       status: "LOCKED",
                       authorizedVoter: null,
                       authorizedAt: null,
-                      activeBoothId: incomingConfig.boothState?.activeBoothId || "BOOTH-1"
+                      activeBoothId: incomingConfig.boothState?.activeBoothId || sanitizedBooths[0]?.id || "BOOTH-1"
                     };
                   }
                 }
 
                 if (hasHealed) {
-                  setDoc(doc(db, "elections", "config"), { electionConfig: incomingConfig, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
+                  setDoc(doc(db, "elections", "config"), { 
+                    electionConfig: { ...incomingConfig, booths: sanitizedBooths }, 
+                    updatedAt: new Date().toISOString() 
+                  }, { merge: true }).catch(console.warn);
                 }
 
                 isInternalUpdateRef.current = true;
-                setElectionConfig((prev) => ({
-                  ...incomingConfig,
-                  booths: incomingConfig.booths || prev?.booths || initialBooths,
-                  boothState: incomingConfig.boothState || prev?.boothState || (incomingConfig.booths ? incomingConfig.booths[0] : initialBooths[0]),
-                  stationCredentials: incomingConfig.stationCredentials || prev?.stationCredentials || initialStationCredentials
-                }));
+                setElectionConfig((prev) => {
+                  const merged = mergeBoothsPreservingActive(
+                    prev?.booths,
+                    sanitizedBooths,
+                    false,
+                    Array.from(deadSet)
+                  );
+                  return {
+                    ...incomingConfig,
+                    booths: merged,
+                    boothState: prev?.boothState?.status === "UNLOCKED" ? prev.boothState : (incomingConfig.boothState || merged[0]),
+                    stationCredentials: incomingConfig.stationCredentials || prev?.stationCredentials || initialStationCredentials
+                  };
+                });
                 setTimeout(() => { isInternalUpdateRef.current = false; }, 50);
               }
             }
@@ -670,9 +769,10 @@ export const ElectionProvider = ({ children }) => {
   };
 
   const cancelBoothAuthorization = (targetBoothId = null) => {
-    const currentBooths = electionConfig.booths && Array.isArray(electionConfig.booths) && electionConfig.booths.length > 0
+    const deadSet = new Set(deletedBoothIds);
+    const currentBooths = (electionConfig.booths && Array.isArray(electionConfig.booths) && electionConfig.booths.length > 0
       ? electionConfig.booths
-      : initialBooths;
+      : initialBooths).filter((b) => !deadSet.has(b.id));
 
     let revokedVoterName = "";
     const updatedBooths = currentBooths.map((b) => {
@@ -689,10 +789,11 @@ export const ElectionProvider = ({ children }) => {
       return b;
     });
 
+    const primaryBooth = updatedBooths.find(b => b.id === (targetBoothId || electionConfig?.boothState?.id)) || updatedBooths[0];
     const lockedBoothConfig = {
       ...electionConfig,
       booths: updatedBooths,
-      boothState: updatedBooths[0]
+      boothState: primaryBooth
     };
 
     setElectionConfig(lockedBoothConfig);
@@ -700,7 +801,7 @@ export const ElectionProvider = ({ children }) => {
     if (broadcastChannelRef.current) {
       broadcastChannelRef.current.postMessage({
         type: "STATE_SYNC",
-        payload: { electionConfig: lockedBoothConfig, isExplicitRevoke: true }
+        payload: { electionConfig: lockedBoothConfig, isExplicitRevoke: true, revokedBoothId: targetBoothId }
       });
     }
 
@@ -709,10 +810,10 @@ export const ElectionProvider = ({ children }) => {
       appendLog(
         "AUTHORIZATION_REVOKED",
         "Polling Officer",
-        `Authorization revoked for ${revokedVoterName}. EVM Terminal reset to Locked Standby.`
+        `Authorization revoked for ${revokedVoterName} (${targetBoothId || "All Booths"}). EVM Terminal reset to Locked Standby.`
       );
     }
-    return { success: true };
+    return { success: true, message: `Booth authorization revoked.` };
   };
 
   // 2. Cast Ballot from EVM Terminal & Record Detailed Vote Trail (Year-wise routing)
@@ -1285,7 +1386,7 @@ export const ElectionProvider = ({ children }) => {
 
   // 10. EVM Booths Management (Admin Terminal Provisioning)
   const addBooth = (boothData) => {
-    const currentBooths = electionConfig?.booths || initialBooths;
+    const currentBooths = (electionConfig?.booths || initialBooths).filter((b) => !deletedBoothIds.includes(b.id));
     const nextNumber = currentBooths.length + 1;
     const newBooth = {
       id: `BOOTH-${Date.now()}`,
@@ -1300,18 +1401,31 @@ export const ElectionProvider = ({ children }) => {
     };
 
     const nextBooths = [...currentBooths, newBooth];
+    const nextDeleted = deletedBoothIds.filter((dId) => dId !== newBooth.id);
+    setDeletedBoothIds(nextDeleted);
+    try {
+      localStorage.setItem("paperless_election_deleted_booths", JSON.stringify(nextDeleted));
+    } catch (e) {}
+
     const updated = {
       ...electionConfig,
-      booths: nextBooths
+      booths: nextBooths,
+      deletedBoothIds: nextDeleted
     };
     setElectionConfig(updated);
     persistDirectToCloud({ electionConfig: updated });
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({
+        type: "STATE_SYNC",
+        payload: { electionConfig: updated, deletedBoothIds: nextDeleted }
+      });
+    }
     appendLog("BOOTH_CREATED", "Admin", `Added EVM booth: ${newBooth.shortName}`);
     return { success: true, booth: newBooth };
   };
 
   const updateBooth = (id, updates) => {
-    const currentBooths = electionConfig?.booths || initialBooths;
+    const currentBooths = (electionConfig?.booths || initialBooths).filter((b) => !deletedBoothIds.includes(b.id));
     const nextBooths = currentBooths.map((b) => (b.id === id ? { ...b, ...updates } : b));
     const updated = {
       ...electionConfig,
@@ -1319,29 +1433,48 @@ export const ElectionProvider = ({ children }) => {
     };
     setElectionConfig(updated);
     persistDirectToCloud({ electionConfig: updated });
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({
+        type: "STATE_SYNC",
+        payload: { electionConfig: updated }
+      });
+    }
     appendLog("BOOTH_UPDATED", "Admin", `Updated EVM booth details for ID: ${id}`);
     return { success: true };
   };
 
   const deleteBooth = (id) => {
-    const currentBooths = electionConfig?.booths || initialBooths;
+    const currentBooths = (electionConfig?.booths || initialBooths).filter((b) => !deletedBoothIds.includes(b.id));
     if (currentBooths.length <= 1) {
       return { success: false, message: "At least one EVM booth must remain active." };
     }
+    const nextDeleted = Array.from(new Set([...deletedBoothIds, id]));
+    setDeletedBoothIds(nextDeleted);
+    try {
+      localStorage.setItem("paperless_election_deleted_booths", JSON.stringify(nextDeleted));
+    } catch (e) {}
+
     const nextBooths = currentBooths.filter((b) => b.id !== id);
     const updated = {
       ...electionConfig,
       booths: nextBooths,
+      deletedBoothIds: nextDeleted,
       boothState: nextBooths[0]
     };
     setElectionConfig(updated);
     persistDirectToCloud({ electionConfig: updated });
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({
+        type: "STATE_SYNC",
+        payload: { electionConfig: updated, deletedBoothIds: nextDeleted }
+      });
+    }
     appendLog("BOOTH_DELETED", "Admin", `Removed EVM booth ID: ${id}`);
     return { success: true };
   };
 
   const resetBooth = (id) => {
-    const currentBooths = electionConfig?.booths || initialBooths;
+    const currentBooths = (electionConfig?.booths || initialBooths).filter((b) => !deletedBoothIds.includes(b.id));
     const nextBooths = currentBooths.map((b) => {
       if (b.id === id) {
         return {
@@ -1356,10 +1489,17 @@ export const ElectionProvider = ({ children }) => {
     });
     const updated = {
       ...electionConfig,
-      booths: nextBooths
+      booths: nextBooths,
+      boothState: nextBooths.find((b) => b.id === electionConfig?.boothState?.id) || nextBooths[0]
     };
     setElectionConfig(updated);
     persistDirectToCloud({ electionConfig: updated });
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({
+        type: "STATE_SYNC",
+        payload: { electionConfig: updated, isExplicitRevoke: true, revokedBoothId: id }
+      });
+    }
     appendLog("BOOTH_RESET", "Admin", `Reset and locked EVM booth ID: ${id}`);
     return { success: true };
   };
@@ -1432,8 +1572,9 @@ export const ElectionProvider = ({ children }) => {
 
   const value = {
     electionConfig,
-    booths: electionConfig?.booths || initialBooths,
-    initialBooths,
+    booths: (electionConfig?.booths || initialBooths).filter((b) => !deletedBoothIds.includes(b.id)),
+    deletedBoothIds,
+    initialBooths: initialBooths.filter((b) => !deletedBoothIds.includes(b.id)),
     initialStationCredentials,
     updateStationCredentials,
     addBooth,

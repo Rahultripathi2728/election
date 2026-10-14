@@ -11,7 +11,11 @@ import {
   CheckCircle2, 
   BarChart3, 
   ChevronRight, 
-  Crown 
+  Crown,
+  Menu,
+  X,
+  Sparkles,
+  Home
 } from "lucide-react";
 import { useElection } from "../../context/ElectionContext";
 import { DEFAULT_AVATAR } from "../../utils/constants";
@@ -20,9 +24,10 @@ import gehuLogo from "../../assets/gehu_logo.png";
 import snaLogo from "../../assets/sna_logo.png";
 
 export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturnToStation }) => {
-  const { electionConfig, positions, candidates, voters, ballots, booths, initialBooths } = useElection();
+  const { electionConfig, positions, candidates, voters, ballots, booths, initialBooths, deletedBoothIds } = useElection();
   
-  const allBooths = booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []);
+  const allBooths = (booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []))
+    .filter((b) => !deletedBoothIds?.includes(b.id));
   
   // Public Portal View Tabs: "CONTESTANTS" (Home) | "RESULTS" (Tallies)
   const [activeTab, setActiveTab] = useState(() => {
@@ -34,8 +39,11 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
     return "CONTESTANTS";
   });
 
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
   const handleTabSwitch = (newTab) => {
     setActiveTab(newTab);
+    setIsMobileNavOpen(false);
     try {
       const url = new URL(window.location.href);
       if (newTab === "RESULTS") {
@@ -144,6 +152,19 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
             className="public-logo-img"
           />
 
+          {/* Mobile Navigation Toggle Button */}
+          <button
+            id="btn-mobile-nav-toggle"
+            type="button"
+            onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+            className="public-mobile-menu-btn"
+            aria-label="Toggle navigation menu"
+            title="Open Navigation Menu"
+          >
+            {isMobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+            <span>Menu</span>
+          </button>
+
           {onOpenLogin && (
             <button
               id="btn-open-staff-login"
@@ -158,6 +179,87 @@ export const LiveResultsPanel = ({ onOpenLogin, isStaffPreview = false, onReturn
           )}
         </div>
       </header>
+
+      {/* MOBILE INTERACTIVE NAVIGATION DRAWER */}
+      {isMobileNavOpen && (
+        <div className="public-mobile-nav-drawer fade-in">
+          <div className="public-mobile-nav-header">
+            <div className="nav-drawer-title">
+              <Sparkles size={16} color="#d97706" />
+              <span>Portal Navigation</span>
+            </div>
+            <button 
+              type="button"
+              onClick={() => setIsMobileNavOpen(false)} 
+              className="nav-drawer-close"
+              aria-label="Close navigation menu"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="public-mobile-nav-list">
+            <button
+              type="button"
+              className={`public-mobile-nav-item ${activeTab === "CONTESTANTS" ? "active" : ""}`}
+              onClick={() => handleTabSwitch("CONTESTANTS")}
+            >
+              <div className="nav-item-icon-box">
+                <Users size={20} />
+              </div>
+              <div className="nav-item-body">
+                <div className="nav-item-title-row">
+                  <span className="nav-item-title">Contestants & Live Status</span>
+                  {activeTab === "CONTESTANTS" && <span className="nav-item-pill">Active</span>}
+                </div>
+                <div className="nav-item-desc">Candidate profiles, photos, positions & manifestos</div>
+              </div>
+              <ChevronRight size={16} className="nav-item-arrow" />
+            </button>
+
+            <button
+              type="button"
+              className={`public-mobile-nav-item ${activeTab === "RESULTS" ? "active" : ""}`}
+              onClick={() => handleTabSwitch("RESULTS")}
+            >
+              <div className="nav-item-icon-box">
+                <BarChart3 size={20} />
+              </div>
+              <div className="nav-item-body">
+                <div className="nav-item-title-row">
+                  <span className="nav-item-title">Official Results & Tallies</span>
+                  {publishedResults && <span className="nav-item-pill pill-live">Live Tallies</span>}
+                </div>
+                <div className="nav-item-desc">Official vote tallies, progress updates & winners</div>
+              </div>
+              <ChevronRight size={16} className="nav-item-arrow" />
+            </button>
+
+            {onOpenLogin && (
+              <button
+                type="button"
+                className="public-mobile-nav-item nav-login-special"
+                onClick={() => {
+                  setIsMobileNavOpen(false);
+                  onOpenLogin();
+                }}
+              >
+                <div className="nav-item-icon-box login-icon-box">
+                  <Lock size={20} />
+                </div>
+                <div className="nav-item-body">
+                  <div className="nav-item-title-row">
+                    <span className="nav-item-title">Officer & Staff Login</span>
+                    <span className="nav-item-pill pill-gold">Desk Login</span>
+                  </div>
+                  <div className="nav-item-desc">Verification Desk, EVM Booth Terminal & Admin Console</div>
+                </div>
+                <ChevronRight size={16} className="nav-item-arrow" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 2. PUBLIC PORTAL NAVIGATION TABS: CONTESTANTS vs RESULTS */}
       <div className="public-nav-segmented">

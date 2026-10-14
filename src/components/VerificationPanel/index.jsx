@@ -36,14 +36,18 @@ export const VerificationPanel = () => {
     cancelBoothAuthorization,
     addVoter,
     booths,
-    initialBooths
+    initialBooths,
+    deletedBoothIds
   } = useElection();
 
-  const allBooths = booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []);
+  const allBooths = (booths && Array.isArray(booths) && booths.length > 0 ? booths : (initialBooths || []))
+    .filter((b) => !deletedBoothIds?.includes(b.id));
 
   const [inputQuery, setInputQuery] = useState("");
   const [currentVerification, setCurrentVerification] = useState(null);
   const [feedbackMessage, setFeedbackMessage] = useState(null);
+  const [inspectingBoothId, setInspectingBoothId] = useState(null);
+  const inspectingBooth = allBooths.find((b) => b.id === inspectingBoothId) || null;
 
   // Modal states
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
@@ -268,22 +272,27 @@ export const VerificationPanel = () => {
               return (
                 <div
                   key={b.id}
+                  onClick={() => setInspectingBoothId(b.id)}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    padding: "4px 10px",
+                    padding: "5px 12px",
                     borderRadius: "8px",
                     fontSize: "0.78rem",
                     fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
                     border: isSub
                       ? "1.5px solid #f59e0b"
                       : isUnl
                       ? "1.5px solid #10b981"
                       : "1.5px solid #cbd5e1",
                     background: isSub ? "#fffbeb" : isUnl ? "#ecfdf5" : "#f8fafc",
-                    color: isSub ? "#b45309" : isUnl ? "#047857" : "#475569"
+                    color: isSub ? "#b45309" : isUnl ? "#047857" : "#475569",
+                    boxShadow: isUnl ? "0 2px 8px rgba(16, 185, 129, 0.2)" : "none"
                   }}
+                  title={`Click to inspect ${b.shortName || b.name} details & active voter`}
                 >
                   <span
                     style={{
@@ -295,19 +304,25 @@ export const VerificationPanel = () => {
                     }}
                   />
                   <span>{b.shortName || b.name}:</span>
-                  <span>
+                  <span style={{ fontWeight: 800 }}>
                     {isSub ? (
-                      "⏳ Recording..."
+                      "⏳ Submitting..."
                     ) : isUnl ? (
                       `🟢 ${b.authorizedVoter?.name?.split(" ")[0] || "In Use"}`
                     ) : (
                       "🔒 Ready"
                     )}
                   </span>
+                  <span style={{ fontSize: "0.7rem", opacity: 0.75, marginLeft: "2px" }}>
+                    🔍
+                  </span>
                   {(isUnl || isSub) && (
                     <button
                       type="button"
-                      onClick={() => handleRelockBooth(b.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRelockBooth(b.id);
+                      }}
                       style={{
                         background: "none",
                         border: "none",
@@ -1004,6 +1019,248 @@ export const VerificationPanel = () => {
           </div>
         </form>
       </Modal>
+
+      {/* 7. LIVE BOOTH STATION INSPECTOR & VOTE PROGRESS MODAL */}
+      {inspectingBooth && (
+        <Modal
+          isOpen={!!inspectingBoothId}
+          onClose={() => setInspectingBoothId(null)}
+          title={`EVM Station Monitor: ${inspectingBooth.name || inspectingBooth.shortName}`}
+          maxWidth="640px"
+        >
+          <div style={{ padding: "20px 24px" }}>
+            {/* Status Header Banner */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px 18px",
+              borderRadius: "10px",
+              marginBottom: "18px",
+              background: inspectingBooth.status === "UNLOCKED" 
+                ? "linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.25) 100%)"
+                : inspectingBooth.status === "SUBMITTING"
+                ? "linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.25) 100%)"
+                : "rgba(100, 116, 139, 0.12)",
+              border: inspectingBooth.status === "UNLOCKED"
+                ? "1.5px solid #10b981"
+                : inspectingBooth.status === "SUBMITTING"
+                ? "1.5px solid #f59e0b"
+                : "1.5px solid #cbd5e1"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{
+                  width: "12px",
+                  height: "12px",
+                  borderRadius: "50%",
+                  background: inspectingBooth.status === "UNLOCKED" ? "#10b981" : inspectingBooth.status === "SUBMITTING" ? "#f59e0b" : "#94a3b8",
+                  animation: inspectingBooth.status !== "LOCKED" ? "pulse 1.5s infinite" : "none"
+                }} />
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: "0.95rem", color: inspectingBooth.status === "UNLOCKED" ? "#065f46" : inspectingBooth.status === "SUBMITTING" ? "#92400e" : "#334155" }}>
+                    {inspectingBooth.status === "UNLOCKED" ? "🟢 ACTIVE VOTING IN PROGRESS" : inspectingBooth.status === "SUBMITTING" ? "⏳ RECORDING OFFICIAL BALLOT" : "🔒 STANDBY / TERMINAL LOCKED"}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    Station ID: <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{inspectingBooth.id}</span> • Device Station: {inspectingBooth.shortName || inspectingBooth.name}
+                  </div>
+                </div>
+              </div>
+
+              <span style={{
+                fontSize: "0.75rem",
+                fontWeight: 800,
+                padding: "4px 10px",
+                borderRadius: "20px",
+                background: inspectingBooth.status === "UNLOCKED" ? "#dcfce7" : inspectingBooth.status === "SUBMITTING" ? "#fef3c7" : "#f1f5f9",
+                color: inspectingBooth.status === "UNLOCKED" ? "#15803d" : inspectingBooth.status === "SUBMITTING" ? "#b45309" : "#475569"
+              }}>
+                {inspectingBooth.status === "UNLOCKED" ? "IN USE" : inspectingBooth.status === "SUBMITTING" ? "SAVING" : "READY"}
+              </span>
+            </div>
+
+            {/* If a student is authorized or currently in booth */}
+            {inspectingBooth.authorizedVoter ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div style={{
+                  display: "flex",
+                  gap: "16px",
+                  padding: "16px",
+                  borderRadius: "12px",
+                  background: "var(--bg-subtle)",
+                  border: "1px solid var(--border-light)",
+                  alignItems: "center"
+                }}>
+                  <img
+                    src={inspectingBooth.authorizedVoter.photoUrl || DEFAULT_AVATAR}
+                    alt={inspectingBooth.authorizedVoter.name}
+                    style={{
+                      width: "80px",
+                      height: "80px",
+                      borderRadius: "12px",
+                      objectFit: "cover",
+                      border: "2px solid #3b82f6",
+                      boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
+                    }}
+                    onError={(e) => { e.target.src = DEFAULT_AVATAR; }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800, color: "var(--primary-navy)" }}>
+                        {inspectingBooth.authorizedVoter.name}
+                      </h3>
+                      <span style={{
+                        background: "#dbeafe",
+                        color: "#1d4ed8",
+                        padding: "2px 8px",
+                        borderRadius: "12px",
+                        fontSize: "0.72rem",
+                        fontWeight: 700
+                      }}>
+                        Authorized Student
+                      </span>
+                    </div>
+
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "auto 1fr auto 1fr",
+                      gap: "4px 12px",
+                      fontSize: "0.82rem",
+                      marginTop: "8px"
+                    }}>
+                      <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>Roll Number:</span>
+                      <span style={{ fontFamily: "monospace", fontWeight: 800, color: "#2563eb" }}>
+                        {inspectingBooth.authorizedVoter.studentId}
+                      </span>
+
+                      <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>Program:</span>
+                      <span style={{ fontWeight: 600 }}>{inspectingBooth.authorizedVoter.course || "B.Sc Nursing"}</span>
+
+                      <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>Year / Sem:</span>
+                      <span style={{ fontWeight: 600 }}>{inspectingBooth.authorizedVoter.year} • {inspectingBooth.authorizedVoter.semester}</span>
+
+                      <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>Authorized:</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {inspectingBooth.authorizedAt ? new Date(inspectingBooth.authorizedAt).toLocaleTimeString() : "Active Now"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Real-time activity description */}
+                <div style={{
+                  padding: "12px 14px",
+                  borderRadius: "8px",
+                  background: inspectingBooth.status === "UNLOCKED" ? "#ecfdf5" : "#fffbeb",
+                  border: inspectingBooth.status === "UNLOCKED" ? "1px solid #a7f3d0" : "1px solid #fde68a",
+                  fontSize: "0.85rem",
+                  color: inspectingBooth.status === "UNLOCKED" ? "#065f46" : "#92400e",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px"
+                }}>
+                  <Radio size={18} className="animate-pulse" />
+                  <div>
+                    {inspectingBooth.status === "UNLOCKED"
+                      ? "Student is actively in the voting compartment marking official selections on this terminal."
+                      : "Ballot cast successfully. Encrypted ballot records are being stored in the database."}
+                  </div>
+                </div>
+
+                {/* Cancel / Revoke Authorization Action */}
+                <div style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                  padding: "14px",
+                  borderRadius: "10px",
+                  background: "#fef2f2",
+                  border: "1.5px solid #fecaca"
+                }}>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#991b1b" }}>
+                    Cancel & Revoke Authorization:
+                  </div>
+                  <p style={{ margin: 0, fontSize: "0.78rem", color: "#b91c1c" }}>
+                    If this student walked away, pressed the wrong booth, or needs re-verification, you can immediately cancel this booth's authorization and restore the terminal to Locked Standby.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cancelBoothAuthorization(inspectingBooth.id);
+                      setFeedbackMessage({
+                        type: "success",
+                        text: `Revoked authorization for ${inspectingBooth.authorizedVoter?.name} on ${inspectingBooth.shortName || inspectingBooth.name}. Booth reset to Locked Standby.`
+                      });
+                      setTimeout(() => setFeedbackMessage(null), 4000);
+                      setInspectingBoothId(null);
+                    }}
+                    className="btn-danger"
+                    style={{
+                      marginTop: "6px",
+                      padding: "8px 16px",
+                      fontSize: "0.88rem",
+                      fontWeight: 800,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px"
+                    }}
+                  >
+                    <XCircle size={16} /> Cancel Authorization & Force Lock Booth
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                textAlign: "center",
+                padding: "24px 16px",
+                background: "var(--bg-subtle)",
+                borderRadius: "12px",
+                border: "1px dashed var(--border-light)"
+              }}>
+                <Lock size={44} color="#64748b" style={{ margin: "0 auto 12px", opacity: 0.8 }} />
+                <h4 style={{ margin: "0 0 6px", fontSize: "1.05rem", fontWeight: 800, color: "var(--primary-navy)" }}>
+                  {inspectingBooth.shortName || inspectingBooth.name} is Locked & Ready
+                </h4>
+                <p style={{ margin: "0 0 16px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                  No student is currently authorized for this EVM terminal. It is actively awaiting an eligible voter dispatch.
+                </p>
+
+                {currentVerification?.status === "ELIGIBLE" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleAuthorize(null, inspectingBooth.id);
+                      setInspectingBoothId(null);
+                    }}
+                    className="btn-success"
+                    style={{
+                      padding: "10px 18px",
+                      fontSize: "0.9rem",
+                      fontWeight: 800,
+                      margin: "0 auto",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}
+                  >
+                    <Sparkles size={16} /> Dispatch {currentVerification.voter.name} to this Booth
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", padding: "12px 24px" }}>
+            <button
+              type="button"
+              onClick={() => setInspectingBoothId(null)}
+              className="btn-secondary"
+            >
+              Close Inspector
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

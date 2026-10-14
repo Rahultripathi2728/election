@@ -30,7 +30,8 @@ export const EVMPanel = ({ userSession }) => {
   const isSubmitting = activeBooth.status === "SUBMITTING";
   const authorizedVoter = activeBooth.authorizedVoter;
 
-  // Track the voter ID to prevent reset when the same voter is in progress
+  // Active Session Voter Lock: Protects voter profile from transient background sync wipes
+  const [sessionVoter, setSessionVoter] = useState(authorizedVoter || null);
   const lastAuthorizedVoterIdRef = useRef(null);
 
   // EVM Internal flow:
@@ -40,6 +41,9 @@ export const EVMPanel = ({ userSession }) => {
   const [ballotSelections, setBallotSelections] = useState({}); // { [positionId]: candidateId | 'NOTA' }
   const [countdown, setCountdown] = useState(electionConfig.autoLockDelaySeconds || 4);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Active Voter identifier for display and payload
+  const activeVoter = sessionVoter || authorizedVoter;
 
   // Fullscreen toggle helper
   const toggleFullscreen = () => {
@@ -73,19 +77,48 @@ export const EVMPanel = ({ userSession }) => {
     };
   }, []);
 
+  // Listen for explicit operator revoking of this booth
+  useEffect(() => {
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      const channel = new BroadcastChannel("paperless_election_sync_bus");
+      const handleSync = (event) => {
+        const { type, payload } = event.data;
+        if (type === "STATE_SYNC" && payload?.isExplicitRevoke) {
+          if (!payload.revokedBoothId || payload.revokedBoothId === activeBooth.id) {
+            lastAuthorizedVoterIdRef.current = null;
+            setSessionVoter(null);
+            setEvmStep("WELCOME");
+            setBallotSelections({});
+            setCurrentPosIndex(0);
+          }
+        }
+      };
+      channel.addEventListener("message", handleSync);
+      return () => {
+        channel.removeEventListener("message", handleSync);
+        channel.close();
+      };
+    }
+  }, [activeBooth.id]);
+
   // When booth unlocks from the verification desk, initialize EVM state ONLY for a new voter
   useEffect(() => {
     if (isUnlocked && authorizedVoter?.studentId) {
       if (lastAuthorizedVoterIdRef.current !== authorizedVoter.studentId) {
         lastAuthorizedVoterIdRef.current = authorizedVoter.studentId;
+        setSessionVoter(authorizedVoter);
         setEvmStep("WELCOME");
         setCurrentPosIndex(0);
         setBallotSelections({});
+      } else {
+        setSessionVoter(authorizedVoter);
       }
-    } else if (!isUnlocked && !isSubmitting) {
+    } else if (!isUnlocked && !isSubmitting && evmStep !== "VOTING" && evmStep !== "REVIEW") {
+      // Never wipe voter or reset if the student is currently in the middle of VOTING or REVIEW
       lastAuthorizedVoterIdRef.current = null;
+      setSessionVoter(null);
     }
-  }, [isUnlocked, authorizedVoter?.studentId]);
+  }, [isUnlocked, authorizedVoter?.studentId, isSubmitting, evmStep]);
 
   // CRITICAL FIX: Handle countdown when vote is submitted, auto-reset when finished
   useEffect(() => {
@@ -97,6 +130,7 @@ export const EVMPanel = ({ userSession }) => {
           if (prev <= 1) {
             clearInterval(timer);
             lastAuthorizedVoterIdRef.current = null;
+            setSessionVoter(null);
             // Reset EVM state back to standby welcome & clear selections
             setEvmStep("WELCOME");
             setBallotSelections({});
@@ -115,15 +149,14 @@ export const EVMPanel = ({ userSession }) => {
     };
   }, [isSubmitting, evmStep, electionConfig.autoLockDelaySeconds, activeBooth.id]);
 
-  // If booth gets locked externally or through timeout, guarantee EVM resets
+  // If booth gets locked externally or through timeout, guarantee EVM resets when done
   useEffect(() => {
-    if (!isUnlocked && !isSubmitting) {
-      if (evmStep === "SUCCESS") {
-        lastAuthorizedVoterIdRef.current = null;
-        setEvmStep("WELCOME");
-        setBallotSelections({});
-        setCurrentPosIndex(0);
-      }
+    if (!isUnlocked && !isSubmitting && evmStep === "SUCCESS") {
+      lastAuthorizedVoterIdRef.current = null;
+      setSessionVoter(null);
+      setEvmStep("WELCOME");
+      setBallotSelections({});
+      setCurrentPosIndex(0);
     }
   }, [isUnlocked, isSubmitting, evmStep]);
 
@@ -166,7 +199,6 @@ export const EVMPanel = ({ userSession }) => {
       // ignore
     }
 
-    lastAuthorizedVoterIdRef.current = null;
     setEvmStep("SUCCESS");
     castBallot(ballotSelections, activeBooth.id);
   };
@@ -174,9 +206,8 @@ export const EVMPanel = ({ userSession }) => {
   // -------------------------------------------------------------
   // RENDER 1: LOCKED STANDBY SCREEN
   // -------------------------------------------------------------
-  // CRITICAL GUARD: Never lock out a voter who is actively in the middle of VOTING or REVIEW
-  // for the currently authorized session!
-  const isActivelyVoting = (evmStep === "VOTING" || evmStep === "REVIEW") && !!authorizedVoter;
+  // CRITICAL GUARD: Never lock out a voter who is actively in the middle of VOTING or REVIEW!
+  const isActivelyVoting = (evmStep === "VOTING" || evmStep === "REVIEW") && !!activeVoter;
 
   if (!isUnlocked && !isActivelyVoting && (!isSubmitting || countdown <= 0) && (evmStep !== "SUCCESS" || countdown <= 0)) {
     return (
@@ -227,7 +258,7 @@ export const EVMPanel = ({ userSession }) => {
 
           <h2 className="success-title">OFFICIAL BALLOT RECORDED SECURELY</h2>
           <div className="success-voter-name">
-            Thank you, {authorizedVoter?.name || "Voter"}!
+            Thank you, {activeVoter?.name || "Voter"}!
           </div>
 
           <div className="digital-vvpat-slip card-base">
@@ -238,7 +269,7 @@ export const EVMPanel = ({ userSession }) => {
             <div className="vvpat-details">
               <div className="vvpat-row">
                 <span>Voter Roll ID:</span>
-                <span className="font-mono">{authorizedVoter?.studentId}</span>
+                <span className="font-mono">{activeVoter?.studentId}</span>
               </div>
               <div className="vvpat-row">
                 <span>Positions Voted:</span>
@@ -306,8 +337,8 @@ export const EVMPanel = ({ userSession }) => {
 
           <div className="induction-profile-row">
             <img
-              src={authorizedVoter?.photoUrl || DEFAULT_AVATAR}
-              alt={authorizedVoter?.name}
+              src={activeVoter?.photoUrl || DEFAULT_AVATAR}
+              alt={activeVoter?.name}
               className="induction-photo"
               onError={(e) => {
                 e.target.src = DEFAULT_AVATAR;
@@ -315,11 +346,11 @@ export const EVMPanel = ({ userSession }) => {
             />
             <div className="induction-text">
               <span className="induction-greeting">Authorized Voter</span>
-              <h2 className="induction-name">{authorizedVoter?.name}</h2>
+              <h2 className="induction-name">{activeVoter?.name}</h2>
               <div className="induction-meta-tags">
-                <span className="meta-tag font-mono">ID: {authorizedVoter?.studentId}</span>
-                <span className="meta-tag">{authorizedVoter?.course || "B.Sc. Nursing"}</span>
-                <span className="meta-tag">{authorizedVoter?.year} ({authorizedVoter?.semester})</span>
+                <span className="meta-tag font-mono">ID: {activeVoter?.studentId}</span>
+                <span className="meta-tag">{activeVoter?.course || "B.Sc. Nursing"}</span>
+                <span className="meta-tag">{activeVoter?.year} ({activeVoter?.semester})</span>
               </div>
             </div>
           </div>
@@ -461,7 +492,7 @@ export const EVMPanel = ({ userSession }) => {
               Position {currentPosIndex + 1} of {positions.length}
             </span>
             <span className="voter-badge-pill">
-              Voter: <strong>{authorizedVoter?.name}</strong> ({authorizedVoter?.studentId})
+              Voter: <strong>{activeVoter?.name}</strong> ({activeVoter?.studentId})
             </span>
           </div>
 
