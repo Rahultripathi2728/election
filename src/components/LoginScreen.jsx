@@ -67,17 +67,35 @@ export const LoginScreen = ({ onLoginSuccess }) => {
       };
     }
 
-    // 3. EVM Voting Terminal
+    // 3. EVM Voting Terminal (Supports "booth", "evm", or direct booth IDs "booth1", "booth2", "booth3")
     const evmCred = activeCreds.evm || initialStationCredentials.evm;
-    if (
-      !authenticatedStation &&
-      (cleanUser === evmCred.username.toLowerCase() || cleanUser === "booth" || cleanUser === "evm") &&
-      cleanPass === evmCred.passcode
-    ) {
+    const isBoothMatch = 
+      cleanUser === evmCred.username.toLowerCase() || 
+      cleanUser === "booth" || 
+      cleanUser === "evm" ||
+      cleanUser === "booth1" || cleanUser === "booth-1" ||
+      cleanUser === "booth2" || cleanUser === "booth-2" ||
+      cleanUser === "booth3" || cleanUser === "booth-3";
+
+    if (!authenticatedStation && isBoothMatch && cleanPass === evmCred.passcode) {
+      if (cleanUser === "booth1" || cleanUser === "booth-1") {
+        try { localStorage.setItem("active_evm_booth_id", "BOOTH-1"); } catch(e) {}
+      } else if (cleanUser === "booth2" || cleanUser === "booth-2") {
+        try { localStorage.setItem("active_evm_booth_id", "BOOTH-2"); } catch(e) {}
+      } else if (cleanUser === "booth3" || cleanUser === "booth-3") {
+        try { localStorage.setItem("active_evm_booth_id", "BOOTH-3"); } catch(e) {}
+      }
+
+      const assignedBoothLabel = 
+        cleanUser.includes("1") ? "EVM Terminal 01 (Booth #1)" :
+        cleanUser.includes("2") ? "EVM Terminal 02 (Booth #2)" :
+        cleanUser.includes("3") ? "EVM Terminal 03 (Booth #3)" :
+        "EVM Voting Terminal";
+
       authenticatedStation = {
         role: "evm",
         username: evmCred.username,
-        label: evmCred.label || "EVM Voting Terminal"
+        label: assignedBoothLabel
       };
     }
 
