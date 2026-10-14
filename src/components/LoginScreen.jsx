@@ -10,12 +10,16 @@ import {
   AlertCircle, 
   ArrowRight,
   Eye,
-  EyeOff
+  EyeOff,
+  X,
+  ArrowLeft
 } from "lucide-react";
 import { useElection } from "../context/ElectionContext";
 import { initialStationCredentials } from "../data/initialData";
+import gehuLogo from "../assets/gehu_logo.png";
+import snaLogo from "../assets/sna_logo.png";
 
-export const LoginScreen = ({ onLoginSuccess }) => {
+export const LoginScreen = ({ onLoginSuccess, isModal = false, onClose }) => {
   const { electionConfig, firebaseStatus, voters, ballots } = useElection();
   
   const [usernameInput, setUsernameInput] = useState("");
@@ -115,139 +119,198 @@ export const LoginScreen = ({ onLoginSuccess }) => {
 
     if (authenticatedStation) {
       onLoginSuccess(authenticatedStation);
+      if (onClose) onClose();
     } else {
       setErrorMessage("Access Denied: Invalid Station ID or Security Password.");
     }
   };
 
-  const handleDirectPublicLive = () => {
-    onLoginSuccess({
-      role: "live",
-      username: "public",
-      label: "Public Results Display"
-    });
-  };
+  const content = (
+    <div className="login-container" style={{ maxWidth: "480px", margin: "0 auto", position: "relative" }}>
+      {/* Modal Close Button if displayed in Modal */}
+      {isModal && onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            position: "absolute",
+            top: "-12px",
+            right: "-12px",
+            width: "36px",
+            height: "36px",
+            borderRadius: "50%",
+            background: "#ffffff",
+            border: "1.5px solid var(--border-light)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: "var(--text-secondary)",
+            zIndex: 10
+          }}
+          title="Return to Public View"
+        >
+          <X size={18} />
+        </button>
+      )}
+
+      {/* Institutional Header with Logos */}
+      <div className="login-header text-center" style={{ marginBottom: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "10px" }}>
+          <img
+            src={gehuLogo}
+            alt="Graphic Era Hill University"
+            style={{ width: "52px", height: "52px", objectFit: "contain", borderRadius: "50%", background: "#fff", padding: "2px", border: "1px solid #e2e8f0" }}
+          />
+          <img
+            src={snaLogo}
+            alt="SNA India"
+            style={{ width: "52px", height: "52px", objectFit: "contain", borderRadius: "50%", background: "#fff", padding: "2px", border: "1px solid #e2e8f0" }}
+          />
+        </div>
+
+        <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "#2563eb", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+          {electionConfig.institution || "Graphic Era Hill University"} • {electionConfig.department || "College of Nursing"}
+        </div>
+        <h1 style={{ margin: "4px 0 2px", fontSize: "1.35rem", fontWeight: 800, color: "var(--primary-navy)" }}>
+          Official Station Login
+        </h1>
+        <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+          Restricted access for Chief Electoral Officer, Verification Desk & EVM Terminals
+        </p>
+      </div>
+
+      {/* Login Form Card */}
+      <div className="login-card card-base" style={{ padding: "24px", borderRadius: "14px", border: "1.5px solid var(--border-light)" }}>
+        <div className="login-card-head" style={{ marginBottom: "16px" }}>
+          <div className="login-badge-icon">
+            <Lock size={20} color="#2563eb" />
+          </div>
+          <div>
+            <h2 className="login-card-title" style={{ fontSize: "1.1rem" }}>Authorized Credentials</h2>
+            <p className="login-card-sub" style={{ fontSize: "0.75rem" }}>Enter your station ID & passcode</p>
+          </div>
+        </div>
+
+        {errorMessage && (
+          <div className="alert-box alert-error mb-4" style={{ padding: "8px 12px", fontSize: "0.82rem" }}>
+            <AlertCircle size={16} />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="login-form">
+          <div className="form-group" style={{ marginBottom: "14px" }}>
+            <label htmlFor="station-id-input" style={{ fontSize: "0.82rem", fontWeight: 700 }}>Station ID / Username</label>
+            <div className="input-with-icon">
+              <User size={18} className="field-icon" />
+              <input
+                id="station-id-input"
+                type="text"
+                required
+                autoFocus
+                placeholder="e.g. admin, officer, booth1, booth2, booth3"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                className="form-input with-icon"
+                autoComplete="username"
+                style={{ fontSize: "0.9rem" }}
+              />
+            </div>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: "18px" }}>
+            <label htmlFor="station-password-input" style={{ fontSize: "0.82rem", fontWeight: 700 }}>Security Password</label>
+            <div className="input-with-icon" style={{ position: "relative" }}>
+              <KeyRound size={18} className="field-icon" />
+              <input
+                id="station-password-input"
+                type={showPassword ? "text" : "password"}
+                required
+                placeholder="Enter passcode..."
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="form-input with-icon"
+                autoComplete="current-password"
+                style={{ paddingRight: "42px", fontSize: "0.9rem" }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: "absolute",
+                  right: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  padding: "4px"
+                }}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" className="btn-primary btn-block btn-lg" style={{ fontSize: "0.95rem", fontWeight: 800 }}>
+            <span>Sign In to Station</span>
+            <ArrowRight size={18} />
+          </button>
+        </form>
+
+        {isModal && onClose && (
+          <div style={{ textAlign: "center", marginTop: "14px" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                fontSize: "0.82rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px"
+              }}
+            >
+              <ArrowLeft size={14} />
+              <span>Cancel & Return to Public View</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  if (isModal) {
+    return (
+      <div style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(15, 23, 42, 0.65)",
+        backdropFilter: "blur(6px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: "20px"
+      }}>
+        {content}
+      </div>
+    );
+  }
 
   return (
     <div className="login-page-wrapper fade-in">
-      {/* Background Decor */}
       <div className="login-bg-shape shape-1"></div>
       <div className="login-bg-shape shape-2"></div>
-
-      <div className="login-container">
-        {/* Institutional Header */}
-        <div className="login-header text-center">
-          <div className="login-inst-pill">
-            <Building size={16} />
-            <span>{electionConfig.institution}</span>
-          </div>
-          <h1 className="login-main-title">{electionConfig.title}</h1>
-          <p className="login-subtitle">
-            Official Election Security Portal • Authorized Station Personnel Only
-          </p>
-        </div>
-
-        {/* Login Form Card */}
-        <div className="login-card card-base">
-          <div className="login-card-head">
-            <div className="login-badge-icon">
-              <Lock size={22} color="#2563eb" />
-            </div>
-            <div>
-              <h2 className="login-card-title">Station Security Login</h2>
-              <p className="login-card-sub">Password authentication required for all official terminals</p>
-            </div>
-          </div>
-
-          {errorMessage && (
-            <div className="alert-box alert-error mb-4">
-              <AlertCircle size={18} />
-              <span>{errorMessage}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="login-form">
-            <div className="form-group">
-              <label htmlFor="station-id-input">Station ID / Username</label>
-              <div className="input-with-icon">
-                <User size={18} className="field-icon" />
-                <input
-                  id="station-id-input"
-                  type="text"
-                  required
-                  autoFocus
-                  placeholder="Enter designated Station ID"
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  className="form-input with-icon"
-                  autoComplete="username"
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="station-password-input">Security Password</label>
-              <div className="input-with-icon" style={{ position: "relative" }}>
-                <KeyRound size={18} className="field-icon" />
-                <input
-                  id="station-password-input"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  placeholder="Enter Station Password..."
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  className="form-input with-icon"
-                  autoComplete="current-password"
-                  style={{ paddingRight: "42px" }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: "absolute",
-                    right: "12px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: "4px"
-                  }}
-                  title={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
-            <button type="submit" className="btn-primary btn-block btn-lg mt-3">
-              <span>Sign In to Station</span>
-              <ArrowRight size={18} />
-            </button>
-          </form>
-
-          <div className="login-footer-action text-center mt-3">
-            <button
-              type="button"
-              onClick={handleDirectPublicLive}
-              className="btn-text-link"
-            >
-              <BarChart3 size={15} />
-              <span>Open Public Results Screen (Read-Only Telemetry)</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Telemetry Strip */}
-        <div className="login-telemetry-bar text-center mt-3">
-          <span>Backend Cloud: <strong className="text-emerald">{firebaseStatus.connected ? "Firebase Live (Firestore)" : "Local Sync Mode"}</strong></span>
-          <span className="dot-sep">•</span>
-          <span>Electoral Roll: <strong>{voters.length} Registered Students</strong></span>
-          <span className="dot-sep">•</span>
-          <span>Ballots Polled: <strong>{ballots.length} Votes</strong></span>
-        </div>
-      </div>
+      {content}
     </div>
   );
 };

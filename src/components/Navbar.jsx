@@ -16,7 +16,9 @@ import { useElection } from "../context/ElectionContext";
 export const Navbar = ({ 
   userSession, 
   onLogout, 
-  onOpenFirebaseModal 
+  onOpenFirebaseModal,
+  isViewingPublic = false,
+  onTogglePublicView
 }) => {
   const { electionConfig, firebaseStatus, voters, ballots, cancelBoothAuthorization } = useElection();
 
@@ -153,11 +155,35 @@ export const Navbar = ({
             </div>
           )}
 
+          {/* Toggle Public Portal Preview Button */}
+          {onTogglePublicView && (
+            <button
+              type="button"
+              onClick={onTogglePublicView}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 12px",
+                borderRadius: "8px",
+                fontSize: "0.8rem",
+                fontWeight: 700,
+                background: isViewingPublic ? "#2563eb" : "#f1f5f9",
+                color: isViewingPublic ? "#ffffff" : "var(--text-secondary)",
+                border: "1px solid var(--border-light)",
+                cursor: "pointer"
+              }}
+              title={isViewingPublic ? "Return to Station Dashboard" : "Preview Public Home Portal"}
+            >
+              <span>{isViewingPublic ? "← Station Console" : "🌐 Public View"}</span>
+            </button>
+          )}
+
           {/* Dedicated Sign Out / Lock Button */}
           <button
             onClick={onLogout}
             className="btn-logout-station"
-            title="Sign out of this role and return to Login Screen"
+            title="Sign out of this role and return to Public Portal"
           >
             <LogOut size={15} />
             <span>Sign Out</span>

@@ -1163,6 +1163,62 @@ export const ElectionProvider = ({ children }) => {
     appendLog("ELECTION_STATUS_CHANGE", "Admin", `Election status changed to: ${status}`);
   };
 
+  const setElectionStage = (stage) => {
+    // stage: "PRE_POLL" | "LIVE_POLL" | "CONCLUDED"
+    setElectionConfig((prev) => {
+      const updated = {
+        ...prev,
+        electionStage: stage,
+        status: stage === "CONCLUDED" ? "CONCLUDED" : "ACTIVE"
+      };
+      persistDirectToCloud({ electionConfig: updated });
+      return updated;
+    });
+    appendLog("ELECTION_STAGE_CHANGE", "Admin", `Public election stage updated to: ${stage}`);
+  };
+
+  const publishBulletin = (bulletinData) => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const totalVotersCount = voters.length;
+    const votedCount = voters.filter((v) => v.hasVoted).length;
+    const turnoutPct = totalVotersCount > 0 ? ((votedCount / totalVotersCount) * 100).toFixed(1) : 0;
+
+    const newBulletin = {
+      id: `bulletin_${Date.now()}`,
+      postedAt: timeStr,
+      title: bulletinData?.title || `Official Update (${timeStr})`,
+      message: bulletinData?.message || "",
+      turnoutPercent: bulletinData?.includeTurnout ? turnoutPct : null,
+      ballotsCount: bulletinData?.includeTurnout ? votedCount : null
+    };
+
+    setElectionConfig((prev) => {
+      const updated = {
+        ...prev,
+        activeBulletin: newBulletin,
+        publishedBulletins: [newBulletin, ...(prev?.publishedBulletins || [])]
+      };
+      persistDirectToCloud({ electionConfig: updated });
+      return updated;
+    });
+
+    appendLog("BULLETIN_PUBLISHED", "Admin", `Published public bulletin: ${newBulletin.title}`);
+    return { success: true, bulletin: newBulletin };
+  };
+
+  const clearBulletin = () => {
+    setElectionConfig((prev) => {
+      const updated = {
+        ...prev,
+        activeBulletin: null
+      };
+      persistDirectToCloud({ electionConfig: updated });
+      return updated;
+    });
+    appendLog("BULLETIN_CLEARED", "Admin", `Removed active public bulletin.`);
+  };
+
   // 10. Update Station Security Passwords (Production Hardening)
   const updateStationCredentials = (newCredentials) => {
     const updated = {
@@ -1218,6 +1274,9 @@ export const ElectionProvider = ({ children }) => {
     forcePushToFirestore,
     configureFirebase,
     setElectionStatus,
+    setElectionStage,
+    publishBulletin,
+    clearBulletin,
     setElectionConfig
   };
 

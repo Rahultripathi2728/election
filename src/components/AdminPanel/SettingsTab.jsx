@@ -19,7 +19,14 @@ import {
   Vote,
   BarChart3,
   Sliders,
-  User
+  User,
+  Radio,
+  Clock,
+  Award,
+  Megaphone,
+  Trash2,
+  Send,
+  Sparkles
 } from "lucide-react";
 import { useElection } from "../../context/ElectionContext";
 import { Modal } from "../common/Modal";
@@ -30,6 +37,9 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
     electionConfig, 
     setElectionConfig, 
     setElectionStatus, 
+    setElectionStage,
+    publishBulletin,
+    clearBulletin,
     resetAllVotes,
     reseedCompleteDatabase,
     forcePushToFirestore,
@@ -48,6 +58,63 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
   const [showReseedConfirm, setShowReseedConfirm] = useState(false);
   const [reseedCheckbox, setReseedCheckbox] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState(null);
+
+  // Public Portal Stage & Periodic Bulletin State
+  const currentStage = electionConfig?.electionStage || "LIVE_POLL";
+  const [bulletinTitle, setBulletinTitle] = useState("");
+  const [bulletinMessage, setBulletinMessage] = useState("");
+  const [includeTurnout, setIncludeTurnout] = useState(true);
+  const [bulletinFeedback, setBulletinFeedback] = useState(null);
+
+  const totalVotersCount = voters.length;
+  const votedCount = voters.filter((v) => v.hasVoted).length;
+  const liveTurnoutPct = totalVotersCount > 0 ? ((votedCount / totalVotersCount) * 100).toFixed(1) : 0;
+
+  const bulletinPresets = [
+    {
+      label: "Round 1 Milestone",
+      title: "Round 1 Turnout Milestone",
+      message: "Voting has commenced across all 3 EVM terminals. Students from 1st and 3rd Semesters are casting their ballots smoothly."
+    },
+    {
+      label: "Mid-Poll Progress",
+      title: "Mid-Poll Voting Progress",
+      message: "Over 50% voter attendance recorded. Verification desks are actively clearing student queues at Booth 1, 2, and 3."
+    },
+    {
+      label: "Final 20 Mins Call",
+      title: "Final 20 Minutes Warning",
+      message: "Final 20 minutes remaining! All eligible nursing students who have not yet voted are requested to reach the Verification Desk immediately."
+    },
+    {
+      label: "Official Notice",
+      title: "Chief Electoral Officer Notice",
+      message: "EVM booths are operating with strict ballot secrecy. Maintain silence and discipline near the auditorium voting area."
+    }
+  ];
+
+  const handlePublishBulletin = (e) => {
+    e.preventDefault();
+    if (!bulletinTitle.trim() && !bulletinMessage.trim()) {
+      setBulletinFeedback({ type: "error", text: "Please enter a bulletin title or announcement message." });
+      return;
+    }
+    publishBulletin({
+      title: bulletinTitle.trim() || "Official Election Bulletin",
+      message: bulletinMessage.trim(),
+      includeTurnout
+    });
+    setBulletinTitle("");
+    setBulletinMessage("");
+    setBulletinFeedback({ type: "success", text: "Official bulletin successfully broadcast to Public Portal!" });
+    setTimeout(() => setBulletinFeedback(null), 3500);
+  };
+
+  const handleClearBulletin = () => {
+    clearBulletin();
+    setBulletinFeedback({ type: "success", text: "Active bulletin removed from Public Portal." });
+    setTimeout(() => setBulletinFeedback(null), 3000);
+  };
 
   // Station Passwords Management State
   const activeCreds = electionConfig?.stationCredentials || initialStationCredentials;
@@ -213,6 +280,230 @@ export const SettingsTab = ({ onOpenFirebaseModal }) => {
       )}
 
       <div className="settings-grid">
+        {/* 1. PUBLIC PORTAL DISPLAY STAGE & EXPERIENCE CONTROLS */}
+        <div className="settings-card card-base settings-card-wide" style={{ border: "2px solid rgba(37, 99, 235, 0.4)", background: "linear-gradient(180deg, rgba(37, 99, 235, 0.05) 0%, rgba(15, 23, 42, 0.3) 100%)" }}>
+          <div className="settings-card-header">
+            <div className="flex-row items-center gap-2">
+              <Radio size={22} color="#2563eb" />
+              <h3>Public Portal Display Stage & Live Experience</h3>
+            </div>
+            <span className={`badge ${
+              currentStage === "PRE_POLL" 
+                ? "badge-warning" 
+                : currentStage === "LIVE_POLL" 
+                ? "badge-success" 
+                : "badge-blue"
+            }`} style={{ fontWeight: 800 }}>
+              ● Currently Live: {currentStage === "PRE_POLL" ? "Pre-Poll Countdown" : currentStage === "LIVE_POLL" ? "Voting Live (Timer Hidden)" : "Concluded (Winners Declared)"}
+            </span>
+          </div>
+
+          <p className="settings-card-desc">
+            Directly controls what public visitors, students, and auditorium screens see without any login. Switch seamlessly between Pre-Poll Countdown, Live Voting mode, and Final Winners declaration.
+          </p>
+
+          <div className="status-selector-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+            {/* Stage 1: Pre-Poll Countdown */}
+            <button
+              type="button"
+              onClick={() => setElectionStage("PRE_POLL")}
+              className={`status-choice-btn ${currentStage === "PRE_POLL" ? "selected status-paused" : ""}`}
+              style={{ textAlign: "left" }}
+            >
+              <div className="choice-icon-wrap" style={{ background: currentStage === "PRE_POLL" ? "#f59e0b" : "rgba(245, 158, 11, 0.15)", color: currentStage === "PRE_POLL" ? "#fff" : "#f59e0b" }}>
+                <Clock size={20} />
+              </div>
+              <div className="choice-text">
+                <div className="choice-name">1. Pre-Poll (Countdown to 3:00 PM)</div>
+                <div className="choice-desc">Shows countdown clock to 3:00 PM, all 14 nominated candidates & manifestos. Voting booths locked.</div>
+              </div>
+            </button>
+
+            {/* Stage 2: Voting Live (No timer) */}
+            <button
+              type="button"
+              onClick={() => setElectionStage("LIVE_POLL")}
+              className={`status-choice-btn ${currentStage === "LIVE_POLL" ? "selected status-active" : ""}`}
+              style={{ textAlign: "left" }}
+            >
+              <div className="choice-icon-wrap" style={{ background: currentStage === "LIVE_POLL" ? "#10b981" : "rgba(16, 185, 129, 0.15)", color: currentStage === "LIVE_POLL" ? "#fff" : "#10b981" }}>
+                <Radio size={20} />
+              </div>
+              <div className="choice-text">
+                <div className="choice-name">2. Voting Live (Timer Hidden)</div>
+                <div className="choice-desc">Prominently displays green "🟢 VOTING IS LIVE & IN PROGRESS" banner, hides timer, showcases candidates per office.</div>
+              </div>
+            </button>
+
+            {/* Stage 3: Concluded Winners */}
+            <button
+              type="button"
+              onClick={() => setElectionStage("CONCLUDED")}
+              className={`status-choice-btn ${currentStage === "CONCLUDED" ? "selected status-concluded" : ""}`}
+              style={{ textAlign: "left" }}
+            >
+              <div className="choice-icon-wrap" style={{ background: currentStage === "CONCLUDED" ? "#3b82f6" : "rgba(59, 130, 246, 0.15)", color: currentStage === "CONCLUDED" ? "#fff" : "#3b82f6" }}>
+                <Award size={20} />
+              </div>
+              <div className="choice-text">
+                <div className="choice-name">3. Concluded (Declare Winners)</div>
+                <div className="choice-desc">Seals voting, declares official Hall of Winners with gold winner cards, 👑 crowns, vote leads, and certified standing.</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. PERIODIC MID-POLL BULLETIN PUBLISHER (15-20 MIN UPDATES) */}
+        <div className="settings-card card-base settings-card-wide" style={{ border: "2px solid rgba(16, 185, 129, 0.35)", background: "linear-gradient(180deg, rgba(16, 185, 129, 0.04) 0%, rgba(15, 23, 42, 0.3) 100%)" }}>
+          <div className="settings-card-header">
+            <div className="flex-row items-center gap-2">
+              <Megaphone size={22} color="#10b981" />
+              <div>
+                <h3>Periodic Mid-Poll Bulletin Publisher (15–20 Min Updates)</h3>
+                <p className="text-muted text-xs">Post manual progress updates & official notices to the Public Home Screen whenever you choose.</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span className="badge badge-emerald" style={{ fontWeight: 700 }}>
+                Live Turnout: {liveTurnoutPct}% ({votedCount}/{totalVotersCount} Voted)
+              </span>
+            </div>
+          </div>
+
+          {bulletinFeedback && (
+            <div className={`alert-box mb-3 ${bulletinFeedback.type === "success" ? "alert-success" : "alert-error"}`}>
+              {bulletinFeedback.type === "success" ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+              <span>{bulletinFeedback.text}</span>
+            </div>
+          )}
+
+          {/* Active Bulletin Banner Preview */}
+          {electionConfig?.activeBulletin ? (
+            <div style={{
+              padding: "14px 18px",
+              borderRadius: "12px",
+              background: "rgba(59, 130, 246, 0.1)",
+              border: "1.5px solid rgba(59, 130, 246, 0.35)",
+              marginBottom: "16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px"
+            }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <span style={{ background: "#2563eb", color: "#ffffff", padding: "2px 8px", borderRadius: "20px", fontSize: "0.72rem", fontWeight: 800 }}>
+                    ACTIVE ON PUBLIC SCREEN • {electionConfig.activeBulletin.postedAt}
+                  </span>
+                  {electionConfig.activeBulletin.turnoutPercent !== null && (
+                    <span style={{ background: "rgba(16, 185, 129, 0.2)", color: "#10b981", padding: "2px 8px", borderRadius: "20px", fontSize: "0.72rem", fontWeight: 700 }}>
+                      Turnout: {electionConfig.activeBulletin.turnoutPercent}%
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontWeight: 700, color: "#e2e8f0", fontSize: "0.95rem" }}>
+                  {electionConfig.activeBulletin.title}
+                </div>
+                <div style={{ color: "#94a3b8", fontSize: "0.85rem", marginTop: "2px" }}>
+                  {electionConfig.activeBulletin.message || "(No extra text)"}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleClearBulletin}
+                className="btn-danger"
+                style={{ padding: "8px 14px", fontSize: "0.82rem" }}
+              >
+                <Trash2 size={15} /> Remove Bulletin from Screen
+              </button>
+            </div>
+          ) : (
+            <div style={{
+              padding: "10px 14px",
+              borderRadius: "10px",
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px dashed var(--border-light)",
+              marginBottom: "16px",
+              color: "#94a3b8",
+              fontSize: "0.84rem"
+            }}>
+              ℹ️ No active bulletin is currently displayed on the Public Home Screen. Use the composer below to post one.
+            </div>
+          )}
+
+          {/* Preset Buttons for Quick 1-Click Publishing */}
+          <div className="mb-3">
+            <label className="text-xs font-semibold text-muted" style={{ display: "block", marginBottom: "6px" }}>
+              ⚡ Quick 1-Click Bulletin Presets:
+            </label>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {bulletinPresets.map((preset, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setBulletinTitle(preset.title);
+                    setBulletinMessage(preset.message);
+                  }}
+                  className="btn-secondary"
+                  style={{ fontSize: "0.78rem", padding: "6px 12px", borderRadius: "8px" }}
+                >
+                  <Sparkles size={13} color="#f59e0b" />
+                  <span>{preset.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bulletin Composer Form */}
+          <form onSubmit={handlePublishBulletin}>
+            <div className="form-group mb-2">
+              <label className="text-xs font-semibold text-muted">Bulletin Headline / Title</label>
+              <input
+                type="text"
+                value={bulletinTitle}
+                onChange={(e) => setBulletinTitle(e.target.value)}
+                placeholder="e.g. Round 1 Voting Update (15 Mins In)"
+                className="form-input form-input-sm"
+              />
+            </div>
+
+            <div className="form-group mb-2">
+              <label className="text-xs font-semibold text-muted">Announcement Message / Instructions</label>
+              <textarea
+                value={bulletinMessage}
+                onChange={(e) => setBulletinMessage(e.target.value)}
+                placeholder="Write official announcement or status update for students..."
+                className="form-input form-input-sm"
+                rows={2}
+                style={{ resize: "vertical" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--border-light)" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.85rem", color: "#cbd5e1" }}>
+                <input
+                  type="checkbox"
+                  checked={includeTurnout}
+                  onChange={(e) => setIncludeTurnout(e.target.checked)}
+                  style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                />
+                <span>Include live turnout badge (<strong>{liveTurnoutPct}% • {votedCount}/{totalVotersCount} votes</strong>)</span>
+              </label>
+
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{ background: "#059669", borderColor: "#059669", padding: "8px 18px", fontWeight: 700 }}
+              >
+                <Send size={15} /> Broadcast Bulletin to Public Portal
+              </button>
+            </div>
+          </form>
+        </div>
+
         {/* Election Status Lifecycle Card */}
         <div className="settings-card card-base">
           <div className="settings-card-header">

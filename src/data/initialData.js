@@ -69,6 +69,9 @@ export const initialElectionConfig = {
   scheduledTime: "3:00 PM (15:00 IST)",
   scheduledTimestamp: new Date().setHours(15, 0, 0, 0),
   status: "ACTIVE", // "SETUP" | "ACTIVE" | "PAUSED" | "CONCLUDED"
+  electionStage: "LIVE_POLL", // "PRE_POLL" | "LIVE_POLL" | "CONCLUDED"
+  activeBulletin: null,
+  publishedBulletins: [],
   allowNota: true,
   autoLockDelaySeconds: 4,
   booths: initialBooths,

@@ -45,6 +45,8 @@ const MainApp = () => {
   });
 
   const [showFirebaseModal, setShowFirebaseModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [viewingPublicView, setViewingPublicView] = useState(false);
 
   // Global Fullscreen Manager: Works across ALL dashboards via [F] and long-press [ESC]
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -128,35 +130,49 @@ const MainApp = () => {
     } catch (e) {}
   };
 
-  // If not authenticated, render LoginScreen
+  // Public Home Portal is the default zero-login screen for students & public!
   if (!userSession) {
     return (
       <div className="app-root">
-        <LoginScreen onLoginSuccess={handleLoginSuccess} />
-        <FirebaseModal
-          isOpen={showFirebaseModal}
-          onClose={() => setShowFirebaseModal(false)}
-        />
+        <LiveResultsPanel onOpenLogin={() => setShowLoginModal(true)} />
+        {showLoginModal && (
+          <LoginScreen
+            isModal={true}
+            onClose={() => setShowLoginModal(false)}
+            onLoginSuccess={handleLoginSuccess}
+          />
+        )}
       </div>
     );
   }
 
-  // Render ONLY the authenticated role's dashboard
+  // Render authenticated role's dashboard (with option to preview public view)
   return (
     <div className="app-root">
       <Navbar
         userSession={userSession}
         onLogout={handleLogout}
         onOpenFirebaseModal={() => setShowFirebaseModal(true)}
+        isViewingPublic={viewingPublicView}
+        onTogglePublicView={() => setViewingPublicView(!viewingPublicView)}
       />
 
       <main className="main-content">
-        {userSession.role === "admin" && (
-          <AdminPanel onOpenFirebaseModal={() => setShowFirebaseModal(true)} />
+        {viewingPublicView ? (
+          <LiveResultsPanel
+            isStaffPreview={true}
+            onReturnToStation={() => setViewingPublicView(false)}
+          />
+        ) : (
+          <>
+            {userSession.role === "admin" && (
+              <AdminPanel onOpenFirebaseModal={() => setShowFirebaseModal(true)} />
+            )}
+            {userSession.role === "verify" && <VerificationPanel />}
+            {userSession.role === "evm" && <EVMPanel />}
+            {userSession.role === "live" && <LiveResultsPanel />}
+          </>
         )}
-        {userSession.role === "verify" && <VerificationPanel />}
-        {userSession.role === "evm" && <EVMPanel />}
-        {userSession.role === "live" && <LiveResultsPanel />}
       </main>
 
       <FirebaseModal
