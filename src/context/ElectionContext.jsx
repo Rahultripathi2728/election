@@ -45,18 +45,22 @@ export const ElectionProvider = ({ children }) => {
   // Master Election State
   const [electionConfig, setElectionConfig] = useState(() => getInitialState("electionConfig", initialElectionConfig));
   const [positions, setPositions] = useState(() => getInitialState("positions", initialPositions));
+  const [deletedCandidateIds, setDeletedCandidateIds] = useState(() => getInitialState("deletedCandidateIds", []));
   const [candidates, setCandidates] = useState(() => {
+    const tombstone = getInitialState("deletedCandidateIds", []);
     const raw = getInitialState("candidates", initialCandidates);
     if (Array.isArray(raw)) {
-      return raw.map((c) => {
-        if (!c.avatarUrl || c.avatarUrl === DEFAULT_AVATAR || c.avatarUrl.startsWith("data:image/svg+xml")) {
-          const realPhoto = candidatePhotos[c.id];
-          if (realPhoto) return { ...c, avatarUrl: realPhoto };
-        }
-        return c;
-      });
+      return raw
+        .filter((c) => !tombstone.includes(c.id))
+        .map((c) => {
+          if (!c.avatarUrl || c.avatarUrl === DEFAULT_AVATAR || c.avatarUrl.startsWith("data:image/svg+xml")) {
+            const realPhoto = candidatePhotos[c.id];
+            if (realPhoto) return { ...c, avatarUrl: realPhoto };
+          }
+          return c;
+        });
     }
-    return initialCandidates;
+    return initialCandidates.filter((c) => !tombstone.includes(c.id));
   });
   const [voters, setVoters] = useState(() => getInitialState("voters", initialVoters));
   const [ballots, setBallots] = useState(() => getInitialState("ballots", initialBallots));
@@ -86,8 +90,11 @@ export const ElectionProvider = ({ children }) => {
         if (partialUpdates.positions) {
           promises.push(setDoc(doc(db, "elections", "positions"), { positions: partialUpdates.positions, updatedAt: now }, { merge: true }));
         }
-        if (partialUpdates.candidates) {
-          promises.push(setDoc(doc(db, "elections", "candidates"), { candidates: partialUpdates.candidates, updatedAt: now }, { merge: true }));
+        if (partialUpdates.candidates || partialUpdates.deletedCandidateIds) {
+          const candPayload = { updatedAt: now };
+          if (partialUpdates.candidates) candPayload.candidates = partialUpdates.candidates;
+          if (partialUpdates.deletedCandidateIds) candPayload.deletedCandidateIds = partialUpdates.deletedCandidateIds;
+          promises.push(setDoc(doc(db, "elections", "candidates"), candPayload, { merge: true }));
         }
         if (partialUpdates.voters) {
           promises.push(setDoc(doc(db, "elections", "voters"), { voters: partialUpdates.voters, updatedAt: now }, { merge: true }));
@@ -218,13 +225,16 @@ export const ElectionProvider = ({ children }) => {
           })
         );
 
-        // 3. Candidates listener (Holds 13 candidates with crystal-clear HD portraits)
+        // 3. Candidates listener (Holds candidates with crystal-clear HD portraits)
         unsubs.push(
           onSnapshot(doc(db, "elections", "candidates"), (snapshot) => {
             if (snapshot.exists()) {
               const data = snapshot.data();
-              if (data.candidates && Array.isArray(data.candidates) && data.candidates.length > 0) {
-                const enriched = data.candidates.map((c) => {
+              const tombstone = Array.isArray(data.deletedCandidateIds) ? data.deletedCandidateIds : [];
+              setDeletedCandidateIds(tombstone);
+              if (data.candidates && Array.isArray(data.candidates)) {
+                const filtered = data.candidates.filter((c) => !tombstone.includes(c.id));
+                const enriched = filtered.map((c) => {
                   if (!c.avatarUrl || c.avatarUrl === DEFAULT_AVATAR || c.avatarUrl.startsWith("data:image/svg+xml")) {
                     const realPhoto = candidatePhotos[c.id];
                     if (realPhoto) return { ...c, avatarUrl: realPhoto };
@@ -760,9 +770,11 @@ export const ElectionProvider = ({ children }) => {
   const deleteCandidate = (id) => {
     const cand = candidates.find((c) => c.id === id);
     const nextCandidates = candidates.filter((c) => c.id !== id);
+    const nextDeletedIds = Array.from(new Set([...deletedCandidateIds, id]));
     setCandidates(nextCandidates);
+    setDeletedCandidateIds(nextDeletedIds);
     appendLog("CANDIDATE_DELETED", "Admin", `Removed nominee: ${cand?.name || id}`);
-    persistDirectToCloud({ candidates: nextCandidates });
+    persistDirectToCloud({ candidates: nextCandidates, deletedCandidateIds: nextDeletedIds });
   };
 
   // 5. Voter Roll Management
@@ -990,6 +1002,7 @@ export const ElectionProvider = ({ children }) => {
     addCandidate,
     updateCandidate,
     deleteCandidate,
+    deletedCandidateIds,
     addVoter,
     updateVoter,
     deleteVoter,
